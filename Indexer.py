@@ -14,7 +14,7 @@ import re
 import os
 from os.path import join, exists, abspath
 from template import Template
-import CSSTestLib
+import w3ctestlib
 from Utils import listfiles
 from OutputFormats import ExtensionMap
 import shutil
@@ -68,7 +68,7 @@ class Indexer:
             'implementation-report-TEMPLATE.data.tmpl']
 
     # Initialize template engine
-    self.templatePath = [join(CSSTestLib.__path__[0], 'templates')]
+    self.templatePath = [join(w3ctestlib.__path__[0], 'templates')]
     if templatePathList:
       self.templatePath.extend(templatePathList)
     self.templatePath = [abspath(path) for path in self.templatePath]
@@ -160,7 +160,7 @@ class Indexer:
       sys.stdout.flush()
       for error in errors:
         print >> errorOut, "Error in %s: %s" % \
-                           (error.CSSTestLibErrorLocation, error)
+                           (error.W3CTestLibErrorLocation, error)
 
   def writeIndex(self, format):
     """Write indices into test suite build output through format `format`.

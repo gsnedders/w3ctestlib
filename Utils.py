@@ -6,8 +6,8 @@
 ###### XML Parsing ######
 
 import os
-import CSSTestLib
-os.environ['XML_CATALOG_FILES'] = os.path.join(CSSTestLib.__path__[0], 'catalog/catalog.xml')
+import w3ctestlib
+os.environ['XML_CATALOG_FILES'] = os.path.join(w3ctestlib.__path__[0], 'catalog/catalog.xml')
 
 ###### File path manipulation ######
 

@@ -336,7 +336,7 @@ class XHTMLSource(FileSource):
       self.encoding = self.tree.docinfo.encoding or 'utf-8'
     except etree.ParseError, e:
       self.cacheAsParseError(self.sourcepath, e)
-      e.CSSTestLibErrorLocation = self.sourcepath
+      e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
       self.encoding = 'utf-8'
 
@@ -572,7 +572,7 @@ class CSSTestSource(XHTMLSource):
                                          % CSSTestTitlePrefixes[0])
     # Cache error and return
     except CSSTestSourceMetaError, e:
-      e.CSSTestLibErrorLocation = self.sourcepath
+      e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
       return None
 
