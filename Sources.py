@@ -153,7 +153,7 @@ class FileSource:
   def __ne__(self, other):
     return not self == other
 
-  def parse(self):
+  def parse(self, data = None):
     """Parses and validates FileSource data from sourcepath."""
     pass
 
@@ -328,11 +328,14 @@ class XHTMLSource(FileSource):
       from StringIO import StringIO 
       self.tree = etree.parse(StringIO(errorDoc), parser=self.__parser)
 
-  def parse(self):
+  def parse(self, data = None):
     """Parse file and store any parse errors in self.error"""
     self.error = False
     try:
-      self.tree = etree.parse(self.sourcepath, parser=self.__parser)
+      if (data):
+        self.tree = etree.parse(data, parser=self.__parser)
+      else:
+        self.tree = etree.parse(self.sourcepath, parser=self.__parser)
       self.encoding = self.tree.docinfo.encoding or 'utf-8'
     except etree.ParseError, e:
       self.cacheAsParseError(self.sourcepath, e)
@@ -470,15 +473,15 @@ class CSSTestSource(XHTMLSource):
     return revision
 
 
-  def parse(self):
-    XHTMLSource.parse(self)
+  def parse(self, data = None):
+    XHTMLSource.parse(self, data)
     self.injectedTags = {}
     for ref in self.refs:
       if (ref[0] == '=='):
         self.augmentHead(reference=ref[1])
 
   # See http://wiki.csswg.org/test/css2.1/format for more info on metadata
-  def getMetadata(self):
+  def getMetadata(self, asUnicode = False):
     """Return dictionary of test metadata. Returns None and stores error
        exception in self.error if there is a parse or metadata error.
        Data fields include:
@@ -504,6 +507,12 @@ class CSSTestSource(XHTMLSource):
       XHTMLSource.parse(self)
     if self.error:
       return None
+      
+    def encode(str):
+      return str if asUnicode else intern(str.encode('utf-8'))
+
+    def escape(str, andIntern = True):
+      return str if asUnicode else intern(escapeToNamedASCII(str)) if andIntern else escapeToNamedASCII(str)
 
     # Extract data
     links = []; credits = []; asserts = [];
@@ -511,12 +520,12 @@ class CSSTestSource(XHTMLSource):
             'credits' : credits,
             'flags'   : [], # sorted
             'links'   : links,
-            'name'    : self.name().encode('utf-8'),
+            'name'    : encode(self.name()),
             'title'   : '',
-            'references' : [{'type':ref[0], 'relpath':ref[1].relpath.encode('utf-8')}
+            'references' : [{'type':ref[0], 'relpath':encode(ref[1].relpath)}
                             for ref in self.refs] if self.refs else None,
-            'revision' : self.revision,
-            'selftest' : self.isSelftest
+            'revision' : self.revision(),
+            'selftest' : self.isSelftest()
            }
     def tokenMatch(token, string):
       if not string: return False
@@ -537,7 +546,7 @@ class CSSTestSource(XHTMLSource):
             if not link.startswith('http://') or link.startswith('https://'):
               raise CSSTestSourceMetaError("Help link must be absolute URL.")
             if link.find('propdef') == -1:
-              links.append(intern(link.encode('utf-8')))
+              links.append(encode(link))
           # credits
           elif tokenMatch('author', node.get('rel')):
             name = node.get('title')
@@ -547,7 +556,7 @@ class CSSTestSource(XHTMLSource):
             link = node.get('href').strip()
             if not link:
               raise CSSTestSourceMetaError("Author link missing contact URL (http or mailto).")
-            credits.append((intern(escapeToNamedASCII(name)), intern(link.encode('utf-8'))))
+            credits.append((escape(name), encode(link)))
         elif node.tag == xhtmlns+'meta':
           metatype = node.get('name')
           metatype = metatype.strip() if metatype else metatype
@@ -559,13 +568,13 @@ class CSSTestSource(XHTMLSource):
             data['flags'] = [intern(flag) for flag in sorted(node.get('content').split())]
           # test assertions
           elif metatype == 'assert':
-            asserts.append(escapeToNamedASCII(node.get('content').strip()))
+            asserts.append(escape(node.get('content').strip(), False))
         # test title
         elif node.tag == xhtmlns+'title':
-          title = node.text.strip()
+          title = node.text.strip() if node.text else ''
           for prefix in CSSTestTitlePrefixes:
             if title.startswith(prefix):
-              data['title'] = escapeToNamedASCII(title[len(prefix):].strip())
+              data['title'] = escape(title[len(prefix):].strip(), False)
               break;
           else:
             raise CSSTestSourceMetaError("Title must start with %s"
