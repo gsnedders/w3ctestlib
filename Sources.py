@@ -448,6 +448,8 @@ class CSSTestSource(XHTMLSource):
     """Sets test to be a reftest, with reference source referenceSource."""
     if match == '==':
       self.augmentHead(reference=referenceSource)
+    elif match == '!=':
+      self.augmentHead(notReference=referenceSource)
     # augment before appending to avoid double augment via validate()
     self.refs.append((match, referenceSource))
 
@@ -479,6 +481,8 @@ class CSSTestSource(XHTMLSource):
     for ref in self.refs:
       if (ref[0] == '=='):
         self.augmentHead(reference=ref[1])
+      elif (ref[0] == '!='):
+        self.augmentHead(notReference=ref[1])
 
   # See http://wiki.csswg.org/test/css2.1/format for more info on metadata
   def getMetadata(self, asUnicode = False):
@@ -595,7 +599,7 @@ class CSSTestSource(XHTMLSource):
       return flag in data['flags']
     return False
 
-  def augmentHead(self, next=None, prev=None, reference=None):
+  def augmentHead(self, next=None, prev=None, reference=None, notReference=None):
     """Add extra useful metadata to the head. All arguments are optional.
          * Adds next/prev links to  next/prev Sources given
          * Adds reference link to reference Source given
@@ -610,4 +614,7 @@ class CSSTestSource(XHTMLSource):
     if reference:
       reference = relativeURL(self.relpath, reference.relpath)
       self.injectHeadTag('<link rel="reference" href="%s"/>' % reference, 'ref')
+    if notReference:
+      notReference = relativeURL(self.relpath, notReference.relpath)
+      self.injectHeadTag('<link rel="not-reference" href="%s"/>' % notReference, 'not-ref')
 
