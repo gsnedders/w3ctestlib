@@ -189,7 +189,7 @@ class ReftestGroup(TestGroup):
     for (testsrc, refsrc), (testrel, refrel), reftype in self.manifest:
       test = self.tests.add(testsrc, testrel, True)
       ref = self.refs.add(refsrc, refrel, False)
-      test.setReftest(ref, reftype)
+      test.addReference(ref, reftype)
 
   def merge(self, other):
     """Merge ReftestGroup `other`'s contents into this ReftestGroup and
