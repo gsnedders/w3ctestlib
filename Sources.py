@@ -506,16 +506,12 @@ class XHTMLSource(FileSource):
     return o
 
   def data(self):
-    if (not self.tree or 
-        (not self.error and (not self.injectedTags) and (not self.alteredContent))):
-      # can shortcut
+    if (not self.tree):
       return FileSource.data(self)
     return self.serializeXHTML().encode(self.encoding, 'xmlcharrefreplace')
     
   def unicode(self):
-    if (not self.tree or 
-        (not self.error and (not self.injectedTags) and (not self.alteredContent))):
-      # can shortcut
+    if (not self.tree):
       return FileSource.unicode(self)
     return self.serializeXHTML()
     
@@ -566,7 +562,7 @@ class TestSource(XHTMLSource):
       node = self.refs[refName][2]
       node.set('href', refPath)
       if (match):
-        node.set('rel', 'not-reference' if ('!=' == match) else 'reference')
+        node.set('rel', 'mismatch' if ('!=' == match) else 'match')
       else:
         match = self.refs[refName][0]
       self.refs[refName] = (match, refPath, node, referenceSource)
@@ -664,7 +660,7 @@ class TestSource(XHTMLSource):
               raise TestSourceMetaError("Author link missing contact URL (http or mailto).")
             credits.append((name, link))
           # == references
-          elif tokenMatch('reference', node.get('rel')):
+          elif tokenMatch('match', node.get('rel')):
             refPath = node.get('href').strip()
             if not refPath:
               raise TestSourceMetaError("Reference link missing href value.")
@@ -673,7 +669,7 @@ class TestSource(XHTMLSource):
               raise TestSourceMetaError("Reference already specified.")
             self.refs[refName] = ('==', refPath, node, None)
           # != references
-          elif tokenMatch('not-reference', node.get('rel')):
+          elif tokenMatch('mismatch', node.get('rel')):
             refPath = node.get('href').strip()
             if not refPath:
               raise TestSourceMetaError("Reference link missing href value.")
@@ -781,9 +777,9 @@ class TestSource(XHTMLSource):
     if prev:
       prev = self.injectHeadTag('<link rel="prev" href="%s"/>' % self.relativeURL(prev), 'prev')
     if reference:
-      reference = self.injectHeadTag('<link rel="reference" href="%s"/>' % self.relativeURL(reference), 'ref')
+      reference = self.injectHeadTag('<link rel="match" href="%s"/>' % self.relativeURL(reference), 'ref')
     if notReference:
-      notReference = self.injectHeadTag('<link rel="not-reference" href="%s"/>' % self.relativeURL(notReference), 'not-ref')
+      notReference = self.injectHeadTag('<link rel="mismatch" href="%s"/>' % self.relativeURL(notReference), 'not-ref')
     NodeTuple = collections.namedtuple('NodeTuple', ['next', 'prev', 'reference', 'notReference'])
     return NodeTuple(next, prev, reference, notReference)
 
