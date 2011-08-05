@@ -8,7 +8,7 @@ import filecmp
 import os.path
 import Utils
 from os.path import exists, join
-from Sources import SourceCache, SourceSet, ConfigSource, ReftestManifest
+from Sources import SourceCache, SourceSet, ConfigSource, ReftestManifest, TestSource
 from Utils import listfiles
 
 excludeDirs = ['CVS', '.svn', '.hg']
@@ -33,12 +33,21 @@ class TestGroup:
          Directory path `importDir`, whose context is imported into the group
          Option: Tuple of support directory names `supportDirNames` defaults
                  to ('support',).
+         Kwarg: File path manifestPath relative to `importDir` that
+           identifies the reftest manifest file (usually called 'reftest.list').
+         Kwarg: File path manifestDest as destination (relative) path for
+                the reftest manifest file. Defaults to value of manifestPath.
+         If manifest provided, assumes that only the files listed in the manifest,
+         the .htaccess files in its parent directory, and the `importDir`'s
+         .htaccess file and support directory are relevant to the test suite.
     """
     assert exists(importDir), "Directory to import %s does not exist" % importDir
 
     # Save name
     self.name = name
     self.title = title
+    
+    sourceTree = sourceCache.sourceTree
 
     # Load htaccess
     htapath = join(importDir, '.htaccess')
@@ -60,13 +69,64 @@ class TestGroup:
             relpath = Utils.relpath(sourcepath, importDir)
             self.support.add(sourcepath, relpath)
 
+    # Load tests
+    self.tests = SourceSet(sourceCache)
+    self.refs  = SourceSet(sourceCache)
+
+    # Read manifest
+    manifestPath = kwargs.get('manifestPath', None)
+    manifestDest = kwargs.get('manifestDest', manifestPath)
+    if (manifestPath):
+      self.manifest = ReftestManifest(join(importDir, manifestPath), manifestDest)
+
+      # Import tests
+      for (testSrc, refSrc), (testRel, refRel), refType in self.manifest:
+        test = sourceCache.generateSource(testSrc, testRel, True)
+        ref = sourceCache.generateSource(refSrc, refRel, True)
+        test.addReference(ref, refType)
+        self.tests.addSource(test)
+    else:
+      self.manifest = None
+      # Import tests
+      fileNameList = []
+      if kwargs.get('selfTestExt'):
+        fileNameList += listfiles(importDir, kwargs['selfTestExt'])
+      if kwargs.get('selfTestList'):
+        fileNameList += kwargs['selfTestList']
+      for fileName in fileNameList:
+        filePath = join(importDir, fileName)
+        if sourceTree.isTestCase(filePath):
+          test = sourceCache.generateSource(filePath, fileName, True)
+          if (test.isTest()):
+            self.tests.addSource(test)
+
+    for test in self.tests.iter():
+      if (test.isReftest()):
+        usedRefs = {}
+        usedRefs[test.name()] = '=='
+        def loadReferences(source): # XXX need to verify refType for mutual exclusion (ie: a == b != a)
+          for refSrcPath, refRelPath, refType in source.getReferencePaths():
+            ref = sourceCache.generateSource(refSrcPath, refRelPath, True)
+            source.addReference(ref)
+            if (ref.name() not in usedRefs):
+              usedRefs[ref.name()] = refType
+              if (ref not in self.tests):
+                self.refs.addSource(ref)
+              if (isinstance(ref, TestSource)):
+                loadReferences(ref)
+        loadReferences(test)
+
+
   def sourceCache(self):
     return self.support.sourceCache
 
   def count(self):
     """Returns number of tests.
     """
-    return 0
+    return len(self.tests)
+
+  def iterTests(self):
+    return self.tests.iter()
 
   def _initFrom(self, group=None):
     """Initialize with data from TestGroup `group`."""
@@ -75,6 +135,7 @@ class TestGroup:
     self.title    = group.title if group else None
     self.htaccess = group.htaccess if group else None
     self.support  = group.support if group else None
+    self.tests    = group.tests if grou else None
 
   def merge(self, other):
     """Merge Group `other`'s contents into this Group and clear its contents.
@@ -90,6 +151,18 @@ class TestGroup:
     self.support = SourceSet.combine(self.support, other.support)
     other.support = None
 
+    self.tests = SourceSet.combine(self.tests, other.tests)
+    other.tests = None
+    
+    self.refs  = SourceSet.combine(self.refs, other.refs)
+    other.refs = None
+    if self.manifest and other.manifest:
+      self.manifest.append(other.manifest)
+    else:
+      self.manifest = self.manifest or other.manifest
+    other.manifest = None
+    
+
   def build(self, format):
     """Build Group's contents through OutputFormat `format`.
     """
@@ -102,156 +175,13 @@ class TestGroup:
     # Write support files
     self.support.write(format)
 
-    format.setSubDir()
-
-class SelftestGroup(TestGroup):
-  """Class for groups of self-describing tests.
-  """
-
-  def __init__(self, sourceCache, importDir, name=None, title=None, **kwargs):
-    """Initialize with:
-         SourceCache `sourceCache`
-         Directory path `importDir`, whose context is imported into the group
-         Group name `name`, which must be a possible directory name or None
-         Kwarg: File extension `selfTestExt`, e.g. '.xht', which identifies test
-           files to import from importDir
-         Kwarg: List of test filenames `selfTestList`, which identifies individual
-           test files to import from importDir
-    """
-    TestGroup.__init__(self, sourceCache, importDir, name, title, **kwargs)
-    self.tests = SourceSet(sourceCache)
-
-    # Import tests
-    if kwargs.get('selfTestExt'):
-      files = listfiles(importDir)
-      for file in files:
-        if file.endswith(kwargs['selfTestExt']):
-          self.tests.add(join(importDir, file), file, True)
-    if kwargs.get('selfTestList'):
-      for file in kwargs['selfTestList']:
-        self.tests.add(join(importDir, file), file, True)
-
-  def count(self):
-    """Returns number of tests.
-    """
-    return len(self.tests)
-
-  def merge(self, other):
-    """Merge SelftestGroup `other`'s contents into this SelftestGroup and
-       clear `other`'s contents.
-    """
-    assert isinstance(other, SelftestGroup), \
-           "Expected SelftestGroup instance, got %s" % type(other)
-    TestGroup.merge(self, other)
-    self.tests = SourceSet.combine(self.tests, other.tests)
-    other.tests = None
-
-  def build(self, format):
-    """Build Group's contents through OutputFormat `format`.
-    """
-    TestGroup.build(self, format)
-    format.setSubDir(self.name)
+    # Write tests
     self.tests.write(format)
-    format.setSubDir(self.name)
 
-  def iterTests(self):
-    return self.tests.iter()
-
-
-class ReftestGroup(TestGroup):
-  """Class for groups of reftests.
-  """
-
-  def __init__(self, sourceCache, importDir, name=None, title=None, **kwargs):
-    """Initialize with:
-         SourceCache `sourceCache`
-         Directory path `importDir`, whose context is imported into the group
-         Group name `name`, which must be a possible directory name or None
-         Kwarg: File path manifestPath relative to `importDir` that
-           identifies the reftest manifest file (usually called 'reftest.list').
-         Kwarg: File path manifestDest as destination (relative) path for
-                the reftest manifest file. Defaults to value of manifestPath.
-         ReftestGroup assumes that only the files listed in the manifest,
-         the .htaccess files in its parent directory, and the `importDir`'s
-         .htaccess file and support directory are relevant to the test suite.
-    """
-    TestGroup.__init__(self, sourceCache, importDir, name, title, **kwargs)
-
-    self.tests = SourceSet(sourceCache)
-    self.refs  = SourceSet(sourceCache)
-
-    # Read manifest
-    manifestPath = kwargs['manifestPath']
-    manifestDest = kwargs.get('manifestDest', manifestPath)
-    self.manifest = ReftestManifest(join(importDir, manifestPath), manifestDest)
-
-    # Import tests
-    for (testsrc, refsrc), (testrel, refrel), reftype in self.manifest:
-      test = self.tests.add(testsrc, testrel, True)
-      ref = self.refs.add(refsrc, refrel, False)
-      test.addReference(ref, reftype)
-
-  def merge(self, other):
-    """Merge ReftestGroup `other`'s contents into this ReftestGroup and
-       clear `other`'s contents.
-    """
-    assert isinstance(other, ReftestGroup), \
-           "Expected ReftestGroup instance, got %s" % type(other)
-    TestGroup.merge(self, other)
-    self.tests = SourceSet.combine(self.tests, other.tests)
-    other.tests = None
-    self.refs  = SourceSet.combine(self.refs, other.refs)
-    other.refs = None
-    if self.manifest and other.manifest:
-      self.manifest.append(other.manifest)
-    else:
-      self.manifest = self.manifest or other.manifest
-    other.manifest = None
-
-  def build(self, format):
-    """Build Group's contents through OutputFormat `format`.
-    """
-    TestGroup.build(self, format)
-    format.setSubDir(self.name)
-    self.tests.write(format)
+    # Write refs
     self.refs.write(format)
     if self.manifest:
       format.write(self.manifest)
-    format.setSubDir(self.name)
 
-  def count(self):
-    """Returns number of tests.
-    """
-    return len(self.tests)
+    format.setSubDir()
 
-  def iterTests(self):
-    return self.tests.iter()
-
-class CSSTestGroup(ReftestGroup, SelftestGroup):
-  """Class for combined groups of reftests and self-describing tests.
-  """
-
-  def __init__(self, group):
-    """Initialize by absorbing ReftestGroup or SelftestGroup `group`'s data.
-       Caller must drop references to `group` after this.
-    """
-    TestGroup._initFrom(self, group)
-    self.tests = group.tests \
-                 if hasattr(group, "tests") else SourceSet(self.sourceCache())
-    self.refs = group.refs \
-                if hasattr(group, "refs") else SourceSet(self.sourceCache())
-    self.manifest = group.manifest \
-                    if hasattr(group, "manifest") else None
-
-  def merge(self, other):
-    """Merge TestGroup `other`'s contents into this CSSTestGroup.
-       Caller must drop references to `group` after this.
-    """
-    if isinstance(other, ReftestGroup):
-      ReftestGroup.merge(self, other)
-    elif isinstance(other, SelftestGroup):
-      SelftestGroup.merge(self, other)
-    else:
-      TestGroup.merge(self, other)
-
-  # Other methods identical to ReftestGroup

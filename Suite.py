@@ -5,13 +5,13 @@
 
 import OutputFormats
 import Utils
-from Groups import CSSTestGroup, SelftestGroup, ReftestGroup, excludeDirs
-from Sources import SourceCache
+from Groups import TestGroup, excludeDirs
+from Sources import SourceTree, SourceCache
 from shutil import copytree, rmtree
 from os.path import join
 import os
 
-class CSSTestSuite:
+class TestSuite:
   """Representation of a standard CSS test suite."""
 
   def __init__(self, name, title, specUri):
@@ -19,36 +19,35 @@ class CSSTestSuite:
     self.title = title
     self.specroot = specUri
 
-    self.stripTestTitlePrefix=['CSS Test', 'CSS2.1 Test Suite']
     self.defaultReftestRelpath='reftest.list'
     self.groups = {}
-    self.sourcecache = SourceCache()
+    self.sourcecache = SourceCache(SourceTree())
     self.formats = ('html4', 'xhtml1') # FIXME, hardcoded list is lame
     self.rawgroups = {}
 
-  def addSelftestsByExt(self, dir, ext, groupName='', groupTitle=''):
+  def addTestsByExt(self, dir, ext, groupName='', groupTitle=''):
     """Add tests from directory `dir` by file extension (via `ext`, e.g. ext='.xht').
     """
-    group = SelftestGroup(self.sourcecache, dir, selfTestExt=ext,
-                          name=groupName, title=groupTitle)
+    group = TestGroup(self.sourcecache, dir, selfTestExt=ext,
+                      name=groupName, title=groupTitle)
     self.addGroup(group)
 
 
-  def addSelftestsByList(self, dir, filenames, groupName='', groupTitle=''):
+  def addTestsByList(self, dir, filenames, groupName='', groupTitle=''):
     """Add tests from directory `dir`, via file name list `filenames`.
     """
-    group = SelftestGroup(self.sourcecache, dir, selfTestList=filenames,
-                          name=groupName, title=groupTitle)
+    group = TestGroup(self.sourcecache, dir, selfTestList=filenames,
+                      name=groupName, title=groupTitle)
     self.addGroup(group)
 
   def addReftests(self, dir, manifestPath, groupName='', groupTitle=''):
     """Add tests by importing context of directory `dir` and importing all
        tests listed in the `reftestManifestName` manifest inside `dir`.
     """
-    group = ReftestGroup(self.sourcecache,
-                         dir, manifestPath=manifestPath,
-                         manifestDest=self.defaultReftestRelpath,
-                         name=groupName, title=groupTitle)
+    group = TestGroup(self.sourcecache,
+                      dir, manifestPath=manifestPath,
+                      manifestDest=self.defaultReftestRelpath,
+                      name=groupName, title=groupTitle)
     self.addGroup(group)
 
   def addGroup(self, group):
@@ -57,7 +56,7 @@ class CSSTestSuite:
     if master:
       master.merge(group)
     else:
-      self.groups[group.name] = CSSTestGroup(group)
+      self.groups[group.name] = group
 
   def addRaw(self, dir, relpath):
     """Add the contents of directory `dir` to the test suite by copying

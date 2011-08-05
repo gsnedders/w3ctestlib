@@ -82,6 +82,7 @@ class XHTMLFormat(BasicFormat):
     # skip HTMLonly tests
     if hasattr(source, 'hasFlag') and source.hasFlag('HTMLonly'):
       return
+    source.adjustContentPaths(self)
     source.write(self)
 
 class HTMLFormat(BasicFormat):
@@ -102,6 +103,7 @@ class HTMLFormat(BasicFormat):
     # skip nonHTML tests
     if hasattr(source, 'hasFlag') and source.hasFlag('nonHTML'):
       return
+    source.adjustContentPaths(self)
     if isinstance(source, XHTMLSource):
       source.write(self, source.serializeHTML())
     else:

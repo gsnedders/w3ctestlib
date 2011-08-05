@@ -43,7 +43,7 @@ class Indexer:
 
   def __init__(self, suite, tocDataPath, splitChapter=False, templatePathList=None,
                extraData=None, overviewTmplNames=None, overviewCopyExts=('.css', 'htaccess')):
-    """Initialize indexer with CSSTestSuite `suite` toc data file
+    """Initialize indexer with TestSuite `suite` toc data file
        `tocDataPath` and additional template paths in list `templatePathList`.
 
        The toc data file should be list of tab-separated records, one

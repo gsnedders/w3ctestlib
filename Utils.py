@@ -70,16 +70,19 @@ def relpath(path, start):
 def relativeURL(start, end):
   """ Returns relative URL from `start` to `end`.
   """
-  if isPathInsideBase(end, start):
-    return relpath(end, start)
-  else:
-    return relpath(end, basepath(start))
+#  if isPathInsideBase(end, start):
+#    return relpath(end, start)
+#  else:
+  return relpath(end, basepath(start))
 
-def listfiles(path):
+def listfiles(path, ext = None):
   """ Returns a list of all files in a directory.
+      Optionally lists only files with a given extension.
   """
   try:
     _,_,files = os.walk(path).next()
+    if (ext):
+      files = [fileName for fileName in files if fileName.endswith(ext)]
   except StopIteration, e:
     files = []
   return files

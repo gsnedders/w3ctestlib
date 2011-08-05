@@ -8,18 +8,77 @@ import os
 import filecmp
 import shutil
 import re
+import codecs
 import html5lib # Warning: This uses a patched version of html5lib
 from lxml import etree
 from lxml.etree import ParseError
 from Utils import getMimeFromExt, escapeToNamedASCII, basepath, isPathInsideBase, relativeURL
 from mercurial import ui, hg
 
+class SourceTree(object):
+    """Class that manages structure of test repository source.
+       Temporarily hard-coded path and filename rules, this should be configurable.
+       This is also a good place to hook the repository code to..."""
+    def __init(self):
+        pass
+    
+    def isTracked(self, filePath):
+        return (self.isApproved(filePath) or self.isSubmitted(filePath))
+        
+    def isApproved(self, filePath):
+        return (filePath.startswith('approved/') and ('/src/' in filePath))
+        
+    def isSubmitted(self, filePath):
+        return (('/submitted/' in filePath) and ('/incoming/' not in filePath))
+        
+    def _isSupportFile(self, filePath, path, fileName):
+        return (('support' in path) or ('reftest.list' == fileName) or ('.htaccess' == fileName))
+        
+    def isSupportFile(self, filePath):
+        path, fileName = os.path.split(filePath)
+        return self._isSupportFile(filePath, path, fileName)
+        
+    def _isReference(self, filePath, path, fileName):
+        return (('-ref' in fileName) or fileName.startswith('ref-') or
+                ('-notref' in fileName) or fileName.startswith('notref-') or
+                ('/reftest/' in filePath) or ('/reference/' in filePath))
+        
+    def isReference(self, filePath):
+        path, fileName = os.path.split(filePath)
+        return self._isReference(filePath, path, fileName)
+    
+    def _isTestCase(self, filePath, path, fileName):
+        if ((not self._isSupportFile(filePath, path, fileName)) and (not self._isReference(filePath, path, fileName)) and
+            ('README' not in fileName) and ('.directory' != fileName)):
+            return True
+        return False
+
+    def isTestCase(self, filePath):
+        path, fileName = os.path.split(filePath)
+        return self._isTestCase(filePath, path, fileName)
+        
+    def getAssetName(self, filePath):
+        return os.path.splitext(os.path.basename(filePath))[0].lower()
+
+    def getAssetType(self, filePath):
+        path, fileName = os.path.split(filePath)
+        if (self._isSupportFile(filePath, path, fileName)):
+            return 'support'
+        if (self._isReference(filePath, path, fileName)):
+            return 'reference'
+        if (self._isTestCase(filePath, path, fileName)):
+            return 'testcase'
+        print "*** Unknown asset type *** " + filePath
+        return None
+  
+
 class SourceCache:
   """Cache for FileSource objects. Supports one FileSource object
      per sourcepath.
   """
-  def __init__(self):
+  def __init__(self, sourceTree):
     self.__cache = {}
+    self.sourceTree = sourceTree
 
   def generateSource(self, sourcepath, relpath, isTest=False):
     """Return a FileSource or derivative based on the extensionMap.
@@ -31,21 +90,19 @@ class SourceCache:
     """
     if self.__cache.has_key(sourcepath):
       source = self.__cache[sourcepath]
-      if isTest:
-        assert isinstance(source, TestSource)
       assert relpath == source.relpath
       return source
 
-    if isTest:
-      source = TestSource(sourcepath, relpath)
-    else:
-      if basename(sourcepath) == '.htaccess':
-        return ConfigSource(sourcepath, relpath)
-      mime = getMimeFromExt(sourcepath)
-      if mime == 'application/xhtml+xml':
-        source = XHTMLSource(sourcepath, relpath)
+    if basename(sourcepath) == '.htaccess':
+      return ConfigSource(sourcepath, relpath)
+    mime = getMimeFromExt(sourcepath)
+    if mime == 'application/xhtml+xml':
+      if isTest:
+        source = TestSource(sourcepath, relpath)
       else:
-        source = FileSource(sourcepath, relpath, mime)
+        source = XHTMLSource(sourcepath, relpath)
+    else:
+      source = FileSource(sourcepath, relpath, mime)
     self.__cache[sourcepath] = source
     return source
 
@@ -59,6 +116,10 @@ class SourceSet:
 
   def __len__(self):
     return len(self.pathMap)
+    
+  def __contains__(self, source):
+    return source.relpath in self.pathMap # XXX use basename
+
 
   def iter(self):
     """Iterate over FileSource objects in SourceSet.
@@ -70,7 +131,7 @@ class SourceSet:
        a FileSource with the same path relpath but different contents.
        (ConfigSources are exempt from this requirement.)
     """
-    cachedSource = self.pathMap.get(source.relpath)
+    cachedSource = self.pathMap.get(source.relpath) # XXX use basename 
     if not cachedSource:
       self.pathMap[source.relpath] = source
     else:
@@ -164,6 +225,7 @@ class FileSource:
     self.mimetype   = mimetype or getMimeFromExt(sourcepath)
     self.changeCtx  = changeCtx
     self.error      = None
+    self.encoding   = 'utf-8'
 
   def __eq__(self, other):
     if not isinstance(other, FileSource):
@@ -174,16 +236,37 @@ class FileSource:
   def __ne__(self, other):
     return not self == other
 
+  def __cmp__(self, other):
+    return cmp(self.name(), other.name())
+
+  def name(self):
+    """Extract filename base as source name."""
+    return os.path.splitext(basename(self.relpath))[0]
+
+  def relativeURL(self, other):
+    return relativeURL(self.relpath, other.relpath)
+    
   def data(self):
-    """Return file contents as a string."""
+    """Return file contents as a byte string."""
     if (self.changeCtx):
-      return changeCtx.filectx(self.sourcepath).data()
-    return open(self.sourcepath).read()
+      data = changeCtx.filectx(self.sourcepath).data()
+    else:
+      data = open(self.sourcepath, 'r').read()
+    if (data.startswith(codecs.BOM_UTF8)):
+      self.encoding = 'utf-8-sig' # XXX look for other unicode BOMs
+    return data
+    
+  def unicode(self):
+    return self.data().decode(self.encoding)
     
   def parse(self):
     """Parses and validates FileSource data from sourcepath."""
     pass
 
+  def adjustContentPaths(self, format):
+    """Adjust any paths in file content for output format"""
+    pass
+    
   def write(self, format):
     """Writes FileSource.data() out to `self.relpath` through Format `format`."""
     data = self.data()
@@ -349,6 +432,8 @@ class XHTMLSource(FileSource):
     """
     FileSource.__init__(self, sourcepath, relpath, changeCtx = changeCtx)
     self.tree = None
+    self.injectedTags = {}
+    self.alteredContent = False
 
   def cacheAsParseError(self, filename, e):
       """Replace document with an error message."""
@@ -421,9 +506,17 @@ class XHTMLSource(FileSource):
     return o
 
   def data(self):
-    if not self.error and not getattr(self, 'injectedTags', False):
+    if (not self.tree or 
+        (not self.error and (not self.injectedTags) and (not self.alteredContent))):
       # can shortcut
       return FileSource.data(self)
+    return self.serializeXHTML().encode(self.encoding, 'xmlcharrefreplace')
+    
+  def unicode(self):
+    if (not self.tree or 
+        (not self.error and (not self.injectedTags) and (not self.alteredContent))):
+      # can shortcut
+      return FileSource.unicode(self)
     return self.serializeXHTML()
     
   def write(self, format, output=None):
@@ -431,14 +524,14 @@ class XHTMLSource(FileSource):
        Write contents as string `output` instead if specified.
     """
     if not output:
-      output = self.data()
+      output = self.unicode()
 
     # write
     f = open(format.dest(self.relpath), 'w')
     f.write(output.encode(self.encoding, 'xmlcharrefreplace'))
     f.close()
 
-  def compact():
+  def compact(self):
     self.tree = None
 
 
@@ -457,24 +550,17 @@ class TestSource(XHTMLSource):
     self.refs = {}
     self.metadata = None
 
-  def __cmp__(self, other):
-    return cmp(self.name(), other.name())
-
-  def name(self):
-    """Extract filename base as test name."""
-    return os.path.splitext(basename(self.relpath))[0]
-
   def addReference(self, referenceSource, match = None):
     """Sets test to be a reftest, with reference source referenceSource."""
     self.validate()
     refName = referenceSource.name()
-    refPath = relativeURL(self.relpath, referenceSource.relpath)
+    refPath = self.relativeURL(referenceSource)
     if refName not in self.refs:
       node = None
       if match == '==':
-        node = self.augmentHead(reference=refPath).reference
+        node = self.augmentHead(reference=referenceSource).reference
       elif match == '!=':
-        node = self.augmentHead(notReference=refPath).notReference
+        node = self.augmentHead(notReference=referenceSource).notReference
       self.refs[refName] = (match, refPath, node, referenceSource)
     else:
       node = self.refs[refName][2]
@@ -485,10 +571,12 @@ class TestSource(XHTMLSource):
         match = self.refs[refName][0]
       self.refs[refName] = (match, refPath, node, referenceSource)
 
-  def getReferncePaths(self):
-    """Get list of paths to references as tuple(path, relPath)."""
+  def getReferencePaths(self):
+    """Get list of paths to references as tuple(path, relPath, refType)."""
+    self.validate()
     return [(os.path.join(os.path.dirname(self.sourcepath), ref[1]), 
-             os.path.join(os.path.dirname(self.relpath), ref[1])) 
+             os.path.join(os.path.dirname(self.relpath), ref[1]),
+             ref[0]) 
             for ref in self.refs.values()]
     
   def isTest(self):
@@ -496,10 +584,10 @@ class TestSource(XHTMLSource):
     return bool(self.metadata.get('links'))
     
   def isReftest(self):
-    return bool(self.refs) and self.isTest()
+    return self.isTest() and bool(self.refs)
 
   def isSelftest(self):
-    return (not bool(self.refs)) and self.isTest()
+    return self.isTest() and (not bool(self.refs))
         
   def revision(self):
     """Returns svn revision number of last commit.
@@ -509,7 +597,7 @@ class TestSource(XHTMLSource):
     revision = self.revisionOf(self.sourcepath)
     for refName in self.refs:
       refPath = self.refs[refName][1]
-      refRevision = self.revisionOf(self.sourcepath, refPath)
+      refRevision = self.revisionOf(self.sourcepath, refPath) # XXX also follow reference chains
       if revision < refRevision:
         revision = refRevision
     return revision
@@ -522,6 +610,19 @@ class TestSource(XHTMLSource):
       # be sure to get .meta file from self.changeCtx if present
       self.extractMetadata(self.tree)
       
+  def adjustContentPaths(self, format):
+    """Adjust any paths in file content for output format
+       XXX need to account for group paths"""
+    for refType, refPath, refNode, refSource in self.refs.itervalues():
+      if refSource:
+        refPath = relativeURL(format.dest(self.relpath), format.dest(refSource.relpath))
+      else:
+        refPath = relativeURL(format.dest(self.relpath), format.dest(refPath))
+      if (refPath != refNode.get('href')):
+        refNode.set('href', refPath)
+        self.alteredContent = True
+      
+
   def extractMetadata(self, tree):
     """Extract metadata from tree."""
     links = []; credits = []; flags = []; asserts = [];
@@ -596,7 +697,7 @@ class TestSource(XHTMLSource):
         # test title
         elif node.tag == xhtmlns+'title':
           title = node.text.strip() if node.text else ''
-          match = re.match('(?:.*)[tT]est(?:.*):(.*)', title)
+          match = re.match('(?:[^:]*)[tT]est(?:[^:]*):(.*)', title)
           if (match):
             title = match.group(1)
           self.metadata['title'] = title.strip()
@@ -635,16 +736,30 @@ class TestSource(XHTMLSource):
     def escape(str, andIntern = True):
       return str if asUnicode else intern(escapeToNamedASCII(str)) if andIntern else escapeToNamedASCII(str)
 
+    references = None
+    usedRefs = {}
+    usedRefs[self.name()] = '=='
+    def listReferences(source):
+      for refType, refPath, refNode, refSource in source.refs.values():
+        if (refSource.name() not in usedRefs):
+          usedRefs[refSource.name()] = refType
+          references.append({'type': refType, 'relpath': self.relativeURL(refSource)})
+          if (isinstance(refSource, TestSource) and ('==' == refType)): # XXX don't follow != refs for now (until we export proper ref trees)
+            listReferences(refSource)
+    if (self.isReftest()):
+      references = []
+      listReferences(self)
+      
     if (self.metadata):
-      data = {'asserts': [escape(assertion, False) for assertion in self.metadata['asserts']],
-              'credits': [(escape(name), encode(link)) for name, link in self.metadata['credits']],
-              'flags'  : self.metadata['flags'],
-              'links'  : [encode(link) for link in self.metadata['links']],
-              'name'   : encode(self.name()),
-              'title'  : escape(self.metadata['title'], False),
-              'references' : [{'type': ref[0], 'relpath': encode(ref[1])} for ref in self.refs.values()] if self.isReftest() else None,
-              'revision' : self.revision(),
-              'selftest' : self.isSelftest()
+      data = {'asserts'   : [escape(assertion, False) for assertion in self.metadata['asserts']],
+              'credits'   : [(escape(name), encode(link)) for name, link in self.metadata['credits']],
+              'flags'     : self.metadata['flags'],
+              'links'     : [encode(link) for link in self.metadata['links']],
+              'name'      : encode(self.name()),
+              'title'     : escape(self.metadata['title'], False),
+              'references': references,
+              'revision'  : self.revision(),
+              'selftest'  : self.isSelftest()
              }
       return data
     return None
@@ -655,22 +770,20 @@ class TestSource(XHTMLSource):
       return flag in data['flags']
     return False
 
-  def augmentHead(self, next=None, prev=None, referencePath=None, notReferencePath=None):
+  def augmentHead(self, next=None, prev=None, reference=None, notReference=None):
     """Add extra useful metadata to the head. All arguments are optional.
          * Adds next/prev links to  next/prev Sources given
          * Adds reference link to reference Source given
     """
     self.validate()
     if next:
-      next = relativeURL(self.relpath, next.relpath)
-      next = self.injectHeadTag('<link rel="next" href="%s"/>' % next, 'next')
+      next = self.injectHeadTag('<link rel="next" href="%s"/>' % self.relativeURL(next), 'next')
     if prev:
-      prev = relativeURL(self.relpath, prev.relpath)
-      prev = self.injectHeadTag('<link rel="prev" href="%s"/>' % prev, 'prev')
-    if referencePath:
-      reference = self.injectHeadTag('<link rel="reference" href="%s"/>' % referencePath, 'ref')
-    if notReferencePath:
-      notReference = self.injectHeadTag('<link rel="not-reference" href="%s"/>' % notReferencePath, 'not-ref')
+      prev = self.injectHeadTag('<link rel="prev" href="%s"/>' % self.relativeURL(prev), 'prev')
+    if reference:
+      reference = self.injectHeadTag('<link rel="reference" href="%s"/>' % self.relativeURL(reference), 'ref')
+    if notReference:
+      notReference = self.injectHeadTag('<link rel="not-reference" href="%s"/>' % self.relativeURL(notReference), 'not-ref')
     NodeTuple = collections.namedtuple('NodeTuple', ['next', 'prev', 'reference', 'notReference'])
     return NodeTuple(next, prev, reference, notReference)
 
