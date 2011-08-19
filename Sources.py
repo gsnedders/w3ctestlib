@@ -12,7 +12,7 @@ import codecs
 import html5lib # Warning: This uses a patched version of html5lib
 from lxml import etree
 from lxml.etree import ParseError
-from Utils import getMimeFromExt, escapeToNamedASCII, basepath, isPathInsideBase, relativeURL
+from Utils import getMimeFromExt, escapeToNamedASCII, basepath, isPathInsideBase, relativeURL, assetName
 from mercurial import ui, hg
 
 class SourceTree(object):
@@ -30,26 +30,37 @@ class SourceTree(object):
         
     def isSubmitted(self, filePath):
         return (('/submitted/' in filePath) and ('/incoming/' not in filePath))
+    
+    def _isIgnored(self, filePath, path, fileName):
+        return (('README' in fileName) or ('.directory' == fileName))
         
-    def _isSupportFile(self, filePath, path, fileName):
-        return (('support' in path) or ('reftest.list' == fileName) or ('.htaccess' == fileName))
-        
-    def isSupportFile(self, filePath):
+    def isIgnored(self, filePath):
         path, fileName = os.path.split(filePath)
-        return self._isSupportFile(filePath, path, fileName)
+        return self._isIgnored(filePath, path, fileName)
+        
+    def _isSupport(self, filePath, path, fileName):
+        return ((('support' in path) or ('reftest.list' == fileName) or ('.htaccess' == fileName)) and
+                (not self._isIgnored(filePath, path, fileName)))
+        
+    def isSupport(self, filePath):
+        path, fileName = os.path.split(filePath)
+        return self._isSupport(filePath, path, fileName)
         
     def _isReference(self, filePath, path, fileName):
-        return (('-ref' in fileName) or fileName.startswith('ref-') or
-                ('-notref' in fileName) or fileName.startswith('notref-') or
-                ('/reftest/' in filePath) or ('/reference/' in filePath))
+        return ((not self._isSupport(filePath, path, fileName)) and 
+                (('-ref' in fileName) or fileName.startswith('ref-') or
+                 ('-notref' in fileName) or fileName.startswith('notref-') or
+                 ('/reftest/' in filePath) or ('/reference/' in filePath)) and
+                (not self._isIgnored(filePath, path, fileName)))
         
     def isReference(self, filePath):
         path, fileName = os.path.split(filePath)
         return self._isReference(filePath, path, fileName)
     
     def _isTestCase(self, filePath, path, fileName):
-        if ((not self._isSupportFile(filePath, path, fileName)) and (not self._isReference(filePath, path, fileName)) and
-            ('README' not in fileName) and ('.directory' != fileName)):
+        if ((not self._isSupport(filePath, path, fileName)) and 
+            (not self._isReference(filePath, path, fileName)) and
+            (not self._isIgnored(filePath, path, fileName))):
             return True
         return False
 
@@ -58,11 +69,11 @@ class SourceTree(object):
         return self._isTestCase(filePath, path, fileName)
         
     def getAssetName(self, filePath):
-        return os.path.splitext(os.path.basename(filePath))[0].lower()
+        return assetName(filePath)
 
     def getAssetType(self, filePath):
         path, fileName = os.path.split(filePath)
-        if (self._isSupportFile(filePath, path, fileName)):
+        if (self._isSupport(filePath, path, fileName)):
             return 'support'
         if (self._isReference(filePath, path, fileName)):
             return 'reference'
@@ -118,7 +129,7 @@ class SourceSet:
     return len(self.pathMap)
     
   def __contains__(self, source):
-    return source.relpath in self.pathMap # XXX use basename
+    return source.relpath in self.pathMap # XXX use source.name()
 
 
   def iter(self):
@@ -131,7 +142,7 @@ class SourceSet:
        a FileSource with the same path relpath but different contents.
        (ConfigSources are exempt from this requirement.)
     """
-    cachedSource = self.pathMap.get(source.relpath) # XXX use basename 
+    cachedSource = self.pathMap.get(source.relpath) # XXX use source.name() 
     if not cachedSource:
       self.pathMap[source.relpath] = source
     else:
@@ -241,7 +252,7 @@ class FileSource:
 
   def name(self):
     """Extract filename base as source name."""
-    return os.path.splitext(basename(self.relpath))[0]
+    return assetName(self.relpath)
 
   def relativeURL(self, other):
     return relativeURL(self.relpath, other.relpath)
@@ -249,7 +260,7 @@ class FileSource:
   def data(self):
     """Return file contents as a byte string."""
     if (self.changeCtx):
-      data = changeCtx.filectx(self.sourcepath).data()
+      data = self.changeCtx.filectx(self.sourcepath).data()
     else:
       data = open(self.sourcepath, 'r').read()
     if (data.startswith(codecs.BOM_UTF8)):
@@ -660,20 +671,20 @@ class TestSource(XHTMLSource):
               raise TestSourceMetaError("Author link missing contact URL (http or mailto).")
             credits.append((name, link))
           # == references
-          elif tokenMatch('match', node.get('rel')):
+          elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
             refPath = node.get('href').strip()
             if not refPath:
               raise TestSourceMetaError("Reference link missing href value.")
-            refName = os.path.splitext(os.path.basename(refPath))[0]
+            refName = assetName(refPath)
             if (refName in self.refs):
               raise TestSourceMetaError("Reference already specified.")
             self.refs[refName] = ('==', refPath, node, None)
           # != references
-          elif tokenMatch('mismatch', node.get('rel')):
+          elif tokenMatch('mismatch', node.get('rel')) or tokenMatch('not-reference', node.get('rel')):
             refPath = node.get('href').strip()
             if not refPath:
               raise TestSourceMetaError("Reference link missing href value.")
-            refName = os.path.splitext(os.path.basename(refPath))[0]
+            refName = assetName(refPath)
             if (refName in self.refs):
               raise TestSourceMetaError("Reference already specified.")
             self.refs[refName] = ('!=', refPath, node, None)
@@ -737,11 +748,15 @@ class TestSource(XHTMLSource):
     usedRefs[self.name()] = '=='
     def listReferences(source):
       for refType, refPath, refNode, refSource in source.refs.values():
-        if (refSource.name() not in usedRefs):
-          usedRefs[refSource.name()] = refType
-          references.append({'type': refType, 'relpath': self.relativeURL(refSource)})
-          if (isinstance(refSource, TestSource) and ('==' == refType)): # XXX don't follow != refs for now (until we export proper ref trees)
-            listReferences(refSource)
+        refName = refSource.name() if refSource else assetName(refPath)
+        if (refName not in usedRefs):
+          usedRefs[refName] = refType
+          if (refSource):
+            references.append({'type': refType, 'relpath': self.relativeURL(refSource)})
+            if (isinstance(refSource, TestSource) and ('==' == refType)): # XXX don't follow != refs for now (until we export proper ref trees)
+              listReferences(refSource)
+          else:
+            references.append({'type': refType, 'relpath': refPath, 'name': refName})
     if (self.isReftest()):
       references = []
       listReferences(self)

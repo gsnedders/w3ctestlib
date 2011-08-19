@@ -14,6 +14,9 @@ os.environ['XML_CATALOG_FILES'] = os.path.join(w3ctestlib.__path__[0], 'catalog/
 import os.path
 from os.path import sep, pardir
 
+def assetName(path):
+  return os.path.splitext(os.path.basename(path))[0].lower()
+  
 def basepath(path):
   """ Returns the path part of os.path.split.
   """

@@ -135,7 +135,7 @@ class TestGroup:
     self.title    = group.title if group else None
     self.htaccess = group.htaccess if group else None
     self.support  = group.support if group else None
-    self.tests    = group.tests if grou else None
+    self.tests    = group.tests if group else None
 
   def merge(self, other):
     """Merge Group `other`'s contents into this Group and clear its contents.
