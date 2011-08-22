@@ -16,71 +16,105 @@ from Utils import getMimeFromExt, escapeToNamedASCII, basepath, isPathInsideBase
 from mercurial import ui, hg
 
 class SourceTree(object):
-    """Class that manages structure of test repository source.
-       Temporarily hard-coded path and filename rules, this should be configurable.
-       This is also a good place to hook the repository code to..."""
-    def __init(self):
-        pass
-    
-    def isTracked(self, filePath):
-        return (self.isApproved(filePath) or self.isSubmitted(filePath))
-        
-    def isApproved(self, filePath):
-        return (filePath.startswith('approved/') and ('/src/' in filePath))
-        
-    def isSubmitted(self, filePath):
-        return (('/submitted/' in filePath) and ('/incoming/' not in filePath))
-    
-    def _isIgnored(self, filePath, path, fileName):
-        return (('README' in fileName) or ('.directory' == fileName))
-        
-    def isIgnored(self, filePath):
-        path, fileName = os.path.split(filePath)
-        return self._isIgnored(filePath, path, fileName)
-        
-    def _isSupport(self, filePath, path, fileName):
-        return ((('support' in path) or ('reftest.list' == fileName) or ('.htaccess' == fileName)) and
-                (not self._isIgnored(filePath, path, fileName)))
-        
-    def isSupport(self, filePath):
-        path, fileName = os.path.split(filePath)
-        return self._isSupport(filePath, path, fileName)
-        
-    def _isReference(self, filePath, path, fileName):
-        return ((not self._isSupport(filePath, path, fileName)) and 
-                (('-ref' in fileName) or fileName.startswith('ref-') or
-                 ('-notref' in fileName) or fileName.startswith('notref-') or
-                 ('/reftest/' in filePath) or ('/reference/' in filePath)) and
-                (not self._isIgnored(filePath, path, fileName)))
-        
-    def isReference(self, filePath):
-        path, fileName = os.path.split(filePath)
-        return self._isReference(filePath, path, fileName)
-    
-    def _isTestCase(self, filePath, path, fileName):
-        if ((not self._isSupport(filePath, path, fileName)) and 
-            (not self._isReference(filePath, path, fileName)) and
-            (not self._isIgnored(filePath, path, fileName))):
-            return True
-        return False
+  """Class that manages structure of test repository source.
+     Temporarily hard-coded path and filename rules, this should be configurable.
+     This is also a good place to hook the repository code to..."""
 
-    def isTestCase(self, filePath):
-        path, fileName = os.path.split(filePath)
-        return self._isTestCase(filePath, path, fileName)
-        
-    def getAssetName(self, filePath):
-        return assetName(filePath)
+  def __init__(self):
+    self.mTestExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml']
+    self.mReferenceExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml', '.png', '.svg']
+    pass
+  
+  def _splitPath(self, filePath):
+    """split a path into a list of directory names and the file name
+       paths may come form the os or mercurial, which always uses '/' as the 
+       directory separator
+    """
+    path, fileName = os.path.split(filePath.lower())
+    if ('' == path):
+      pathList = []
+    elif ('/' in path):
+      pathList = path.split('/')
+    else:
+      pathList = path.split(os.path.sep)
+    return (pathList, fileName)
+      
+  def isTracked(self, filePath):
+    pathList, fileName = self._splitPath(filePath)
+    return ((not self._isIgnored(pathList, fileName)) and
+            (self._isApprovedPath(pathList) or self._isSubmittedPath(pathList)))
+      
+  def _isApprovedPath(self, pathList):
+    return (('approved' in pathList) and ('approved' == pathList[0]) and ('src' in pathList))
+      
+  def isApprovedPath(self, filePath):
+    pathList, fileName = self._splitPath(filePath)
+    return (not self._isIgnored(pathList, fileName)) and self._isApprovedPath(pathList)
+      
+  def _isSubmittedPath(self, pathList):
+    return (('submitted' in pathList) and ('incoming' not in pathList))
+  
+  def isSubmittedPath(self, filePath):
+    pathList, fileName = self._splitPath(filePath)
+    return (not self._isIgnored(pathList, fileName)) and self._isSubmittedPath(pathList)
+  
+  def _isIgnored(self, pathList, fileName):
+    return (('.hg' in pathList) or ('.svn' in pathList) or ('cvs' in pathList) or
+            ('.directory' == fileName))
+      
+  def isIgnored(self, filePath):
+    pathList, fileName = self._splitPath(filePath)
+    return self._isIgnored(pathList, fileName)
+      
+  def _isSupportPath(self, pathList):
+    return ('support' in pathList)
+      
+  def _isSupport(self, pathList, fileName):
+    return (self._isSupportPath(pathList) or 
+            ((not self._isReference(pathList, fileName)) and 
+             (not self._isTestCase(pathList, fileName))))
+      
+  def isSupport(self, filePath):
+    pathList, fileName = self._splitPath(filePath)
+    return (not self._isIgnored(pathList, fileName)) and self._isSupport(pathList, fileName)
+      
+  def _isReferencePath(self, pathList):
+    return (('reftest' in pathList) or ('reference' in pathList))
+      
+  def _isReference(self, pathList, fileName):
+    if (not self._isSupportPath(pathList)):
+      fileExt = os.path.splitext(fileName)[1]
+      if (('-ref' in fileName) or fileName.startswith('ref-') or
+           ('-notref' in fileName) or fileName.startswith('notref-')):
+        return (fileExt in self.mReferenceExtensions)
+      if (self._isReferencePath(pathList)):
+        return (fileExt in self.mReferenceExtensions)
+    return False    
+      
+  def isReference(self, filePath):
+    pathList, fileName = self._splitPath(filePath)
+    return (not self._isIgnored(pathList, fileName)) and self._isReference(pathList, fileName)
+  
+  def _isTestCase(self, pathList, fileName):
+    if ((not self._isSupportPath(pathList)) and (not self._isReference(pathList, fileName))):
+      fileExt = os.path.splitext(fileName)[1]
+      return (fileExt in self.mTestExtensions)
+    return False
 
-    def getAssetType(self, filePath):
-        path, fileName = os.path.split(filePath)
-        if (self._isSupport(filePath, path, fileName)):
-            return 'support'
-        if (self._isReference(filePath, path, fileName)):
-            return 'reference'
-        if (self._isTestCase(filePath, path, fileName)):
-            return 'testcase'
-        print "*** Unknown asset type *** " + filePath
-        return None
+  def isTestCase(self, filePath):
+    pathList, fileName = self._splitPath(filePath)
+    return (not self._isIgnored(pathList, fileName)) and self._isTestCase(pathList, fileName)
+      
+  def getAssetName(self, filePath):
+    return assetName(filePath)
+
+  def getAssetType(self, filePath):
+    pathList, fileName = self._splitPath(filePath)
+    if (self._isReference(pathList, fileName)):
+      return 'reference'
+    if (self._isTestCase(pathList, fileName)):
+      return 'testcase'
+    return 'support'
   
 
 class SourceCache:
@@ -700,7 +734,7 @@ class TestSource(XHTMLSource):
               flags.append(intern(flag))
           # test assertions
           elif metatype == 'assert':
-            asserts.append(node.get('content').strip())
+            asserts.append(node.get('content').strip().replace('\t', ' '))
         # test title
         elif node.tag == xhtmlns+'title':
           title = node.text.strip() if node.text else ''
