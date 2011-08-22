@@ -791,7 +791,7 @@ class TestSource(XHTMLSource):
               listReferences(refSource)
           else:
             references.append({'type': refType, 'relpath': refPath, 'name': refName})
-    if (self.isReftest()):
+    if (self.refs):
       references = []
       listReferences(self)
       
