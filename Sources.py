@@ -302,7 +302,10 @@ class FileSource:
     return data
     
   def unicode(self):
-    return self.data().decode(self.encoding)
+    try:
+      return self.data().decode(self.encoding)
+    except UnicodeDecodeError, e:
+      return None
     
   def parse(self):
     """Parses and validates FileSource data from sourcepath."""
