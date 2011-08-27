@@ -60,7 +60,7 @@ class SourceTree(object):
   
   def _isIgnored(self, pathList, fileName):
     return (('.hg' in pathList) or ('.svn' in pathList) or ('cvs' in pathList) or
-            ('.directory' == fileName))
+            (fileName.startswith('.directory')))
       
   def isIgnored(self, filePath):
     pathList, fileName = self._splitPath(filePath)
