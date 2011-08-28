@@ -9,7 +9,9 @@ import filecmp
 import shutil
 import re
 import codecs
+from xml import dom
 import html5lib # Warning: This uses a patched version of html5lib
+from html5lib import treebuilders, inputstream
 from lxml import etree
 from lxml.etree import ParseError
 from Utils import getMimeFromExt, escapeToNamedASCII, basepath, isPathInsideBase, relativeURL, assetName
@@ -108,7 +110,7 @@ class SourceTree(object):
   def getAssetName(self, filePath):
     pathList, fileName = self._splitPath(filePath)
     if (self._isReference(pathList, fileName) or self._isTestCase(pathList, fileName)):
-      return assetName(filePath)
+      return assetName(fileName)
     return fileName.lower() # support files keep full name
 
   def getAssetType(self, filePath):
@@ -143,12 +145,14 @@ class SourceCache:
       return source
 
     if basename(sourcepath) == '.htaccess':
-      return ConfigSource(sourcepath, relpath, changeCtx)
+      return ConfigSource(self.sourceTree, sourcepath, relpath, changeCtx)
     mime = getMimeFromExt(sourcepath)
-    if mime == 'application/xhtml+xml':
-      source = XHTMLSource(sourcepath, relpath, changeCtx)
+    if (mime == 'application/xhtml+xml'):
+      source = XHTMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
+    elif (mime == 'text/html'):
+      source = HTMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
     else:
-      source = FileSource(sourcepath, relpath, mime, changeCtx)
+      source = FileSource(self.sourceTree, sourcepath, relpath, mime, changeCtx)
     if (None == changeCtx):
       self.__cache[sourcepath] = source
     return source
@@ -260,7 +264,7 @@ class FileSource:
      FileSources.
   """
 
-  def __init__(self, sourcepath, relpath, mimetype=None, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, mimetype=None, changeCtx=None):
     """Init FileSource from source path. Give it relative path relpath.
 
        `mimetype` should be the canonical MIME type for the file, if known.
@@ -270,6 +274,7 @@ class FileSource:
        `changeCtx` if provided, is a mercurial change context. When present,
         all file reads will be done from the change context instead.
     """
+    self.sourceTree = sourceTree
     self.sourcepath = sourcepath
     self.relpath    = relpath
     self.mimetype   = mimetype or getMimeFromExt(sourcepath)
@@ -293,8 +298,7 @@ class FileSource:
     return cmp(self.name(), other.name())
 
   def name(self):
-    """Extract filename base as source name."""
-    return assetName(self.relpath)
+    return self.sourceTree.getAssetName(self.sourcepath)
 
   def relativeURL(self, other):
     return relativeURL(self.relpath, other.relpath)
@@ -339,6 +343,8 @@ class FileSource:
     data = self.data()
     f = open(format.dest(self.relpath), 'w')
     f.write(data)
+    if (self.metaSource):
+      self.metaSource.write(format) # XXX need to get output path from format, but not let it choose actual format
 
   def compact(self):
     """Clears all cached data, preserves computed data."""
@@ -373,8 +379,8 @@ class FileSource:
     
   def augmentMetadata(self, next=None, prev=None, reference=None, notReference=None):
     if (self.metaSource):
-      self.metaSource.augmentMetadata(next, prev, reference, notReference)
-    return
+      return self.metaSource.augmentMetadata(next, prev, reference, notReference)
+    return None
     
   # See http://wiki.csswg.org/test/css2.1/format for more info on metadata
   def getMetadata(self, asUnicode = False):
@@ -409,7 +415,7 @@ class FileSource:
     usedRefs[self.name()] = '=='
     def listReferences(source):
       for refType, refPath, refNode, refSource in source.refs.values():
-        refName = refSource.name() if refSource else assetName(refPath)
+        refName = refSource.name() if refSource else self.sourceTree.getAssetName(join(sourcePath, refPath))
         if (refName not in usedRefs):
           usedRefs[refName] = refType
           if (refSource):
@@ -425,7 +431,7 @@ class FileSource:
     if (self.metadata):
       data = {'asserts'   : [escape(assertion, False) for assertion in self.metadata['asserts']],
               'credits'   : [(escape(name), encode(link)) for name, link in self.metadata['credits']],
-              'flags'     : self.metadata['flags'],
+              'flags'     : [encode(flag) for flag in self.metadata['flags']],
               'links'     : [encode(link) for link in self.metadata['links']],
               'name'      : encode(self.name()),
               'title'     : escape(self.metadata['title'], False),
@@ -488,10 +494,10 @@ class ConfigSource(FileSource):
      Capable of merging multiple config-file contents.
   """
 
-  def __init__(self, sourcepath, relpath, mimetype=None, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, mimetype=None, changeCtx=None):
     """Init ConfigSource from source path. Give it relative path relpath.
     """
-    FileSource.__init__(self, sourcepath, relpath, mimetype, changeCtx)
+    FileSource.__init__(self, sourceTree, sourcepath, relpath, mimetype, changeCtx)
     self.sourcepath = [sourcepath]
 
   def __eq__(self, other):
@@ -509,6 +515,9 @@ class ConfigSource(FileSource):
   def __ne__(self, other):
     return not self == other
 
+  def name(self):
+    return '.htaccess'
+    
   def data(self):
     """Merge contents of all config files represented by this source."""
     data = ''
@@ -533,11 +542,11 @@ class ReftestManifest(ConfigSource):
      Iterating the ReftestManifest returns (testpath, refpath) tuples
      with paths relative to the manifest.
   """
-  def __init__(self, sourcepath, relpath, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
     """Init ReftestManifest from source path. Give it relative path `relpath`
        and load its .htaccess file.
     """
-    ConfigSource.__init__(self, sourcepath, relpath, mimetype = 'config/reftest', changeCtx = changeCtx)
+    ConfigSource.__init__(self, sourceTree, sourcepath, relpath, mimetype = 'config/reftest', changeCtx = changeCtx)
 
   def basepath(self):
     """Returns the base relpath of this reftest manifest path, i.e.
@@ -620,12 +629,12 @@ class XHTMLSource(FileSource):
 
   # Public Methods
 
-  def __init__(self, sourcepath, relpath, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
     """Initialize XHTMLSource by loading from XHTML file `sourcepath`.
       Parse errors are reported as caught exceptions in `self.error`,
       and the source is replaced with an XHTML error message.
     """
-    FileSource.__init__(self, sourcepath, relpath, changeCtx = changeCtx)
+    FileSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
     self.tree = None
     self.injectedTags = {}
 
@@ -657,28 +666,27 @@ class XHTMLSource(FileSource):
     if self.tree is None:
       self.parse()
 
-  def injectHeadTag(self, tagSnippet, tagCode = None):
-    """Inject (prepend) <head> data given in `tagSnippet`, which should be
-       a single (XHTML-closed) element. Throws an exception if `tagSnippet`
-       is invalid. Injected element is tagged with `tagCode`, which can be
+  def injectHeadLink(self, rel, href, tagCode = None):
+    """Inject (prepend) <link> with data given in inside head. 
+       Injected element is tagged with `tagCode`, which can be
        used to clear it with clearInjectedTags later.
     """
-    snippet = etree.XML(tagSnippet)
+    node = etree.Element('link', {'rel': rel, 'href': href})
     self.validate()
     head = self.tree.getroot().find(xhtmlns+'head')
-    snippet.tail = head.text
-    head.insert(0, snippet)
-    self.injectedTags[snippet] = tagCode or True
-    return snippet
+    node.tail = head.text
+    head.insert(0, node)
+    self.injectedTags[node] = tagCode or True
+    return node
 
   def clearInjectedTags(self, tagCode = None):
     """Clears all injected elements from the tree, or clears injected
        elements tagged with `tagCode` if `tagCode` is given.
     """
     if not self.injectedTags or not self.tree: return
-    for snippet in self.injectedTags:
-      snippet.getparent().remove(snippet)
-      del self.injectedTags[snippet]
+    for node in self.injectedTags:
+      node.getparent().remove(node)
+      del self.injectedTags[node]
 
   def serializeXHTML(self):
     self.validate()
@@ -737,6 +745,14 @@ class XHTMLSource(FileSource):
     revision = FileSource.revision(self)
     return revision
 
+  
+  def getHeadElements(self, tree):
+    head = tree.getroot().find(xhtmlns+'head')
+    if (None != head):
+      return [node for node in head]
+    return None
+  
+  
   def extractMetadata(self, tree):
     """Extract metadata from tree."""
     links = []; credits = []; flags = []; asserts = [];
@@ -751,8 +767,8 @@ class XHTMLSource(FileSource):
       if not string: return False
       return bool(re.search('(^|\s+)%s($|\s+)' % token, string))
 
-    head = tree.getroot().find(xhtmlns+'head')
     readFlags = False
+    head = self.getHeadElements(tree)
     try:
       if (head == None): raise SourceMetaError("Missing <head> element")
       # Scan and cache metadata
@@ -782,7 +798,7 @@ class XHTMLSource(FileSource):
             refPath = node.get('href').strip()
             if not refPath:
               raise SourceMetaError("Reference link missing href value.")
-            refName = assetName(refPath)
+            refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
             if (refName in self.refs):
               raise SourceMetaError("Reference already specified.")
             self.refs[refName] = ('==', refPath, node, None)
@@ -791,7 +807,7 @@ class XHTMLSource(FileSource):
             refPath = node.get('href').strip()
             if not refPath:
               raise SourceMetaError("Reference link missing href value.")
-            refName = assetName(refPath)
+            refName = self.sourcetree.getAssetName(join(self.sourcepath, refPath))
             if (refName in self.refs):
               raise SourceMetaError("Reference already specified.")
             self.refs[refName] = ('!=', refPath, node, None)
@@ -804,7 +820,7 @@ class XHTMLSource(FileSource):
               raise SourceMetaError("Flags must only be specified once.")
             readFlags = True
             for flag in sorted(node.get('content').split()):
-              flags.append(intern(flag))
+              flags.append(flag)
           # test assertions
           elif metatype == 'assert':
             asserts.append(node.get('content').strip().replace('\t', ' '))
@@ -821,5 +837,154 @@ class XHTMLSource(FileSource):
       e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
 
+  def augmentMetadata(self, next=None, prev=None, reference=None, notReference=None):
+     """Add extra useful metadata to the head. All arguments are optional.
+          * Adds next/prev links to  next/prev Sources given
+          * Adds reference link to reference Source given
+     """
+     self.validate()
+     if next:
+       next = self.injectHeadLink('next', self.relativeURL(next), 'next')
+     if prev:
+       prev = self.injectHeadLink('prev', self.relativeURL(prev), 'prev')
+     if reference:
+       reference = self.injectHeadLink('match', self.relativeURL(reference), 'ref')
+     if notReference:
+       notReference = self.injectHeadLink('mismatch', self.relativeURL(notReference), 'not-ref')
+     NodeTuple = collections.namedtuple('NodeTuple', ['next', 'prev', 'reference', 'notReference'])
+     return NodeTuple(next, prev, reference, notReference)
+
+
+class NodeWrapper(object):
+  """Wrapper object for dom nodes to give them an etree-like api
+  """
   
+  def __init__(self, node):
+    self.node = node
+    self.tag = xhtmlns + self.node.tagName
+    self.text = ''
+    child = node.firstChild
+    while (None != child):
+      if (child.nodeType == dom.Node.TEXT_NODE):
+        self.text += child.data
+      child = child.nextSibling
+    
+  def getparent(self):
+    return NodeWrapper(self.node.parentNode)
+    
+  def remove(self, child):
+    self.node.removeChild(child.node)
+    
+  def get(self, attr):
+    if (self.node.hasAttribute(attr)):
+      return self.node.getAttribute(attr)
+    return None
+    
+  def set(self, attr, value):
+    self.node.setAttribute(attr, value)
+  
+  
+class HTMLSource(XHTMLSource):
+  """FileSource object with support for HTML metadata and HTML->XHTML conversions (untested)."""
+
+  # Private Data and Methods
+  __parser = html5lib.HTMLParser(tree = treebuilders.getTreeBuilder('dom')) 
+    # XXX it would be great to use lxml etree, but it chokes on some of our tests...
+    # if that would work, the NodeWrapper and injectHeadLink below could be removed
+
+  # Public Methods
+
+  def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
+    """Initialize HTMLSource by loading from HTML file `sourcepath`.
+    """
+    XHTMLSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
+
+  def parse(self):
+    """Parse file and store any parse errors in self.error"""
+    self.error = False
+    try:
+      data = self.data()
+      htmlStream = html5lib.inputstream.HTMLInputStream(StringReader(data))
+      self.encoding = htmlStream.detectEncoding()[0]
+      self.tree = self.__parser.parse(StringReader(data), encoding = self.encoding)
+      self.injectedTags = {}
+
+      FileSource.loadMetadata(self)
+      if ((not self.metadata) and self.tree and (not self.error)):
+        self.extractMetadata(self.tree)
+    except etree.ParseError, e:
+      e.W3CTestLibErrorLocation = self.sourcepath
+      self.error = e
+      self.encoding = 'utf-8'
+      
+  def serializeXHTML(self):
+    self.validate()
+    # Serialize
+    o = html5lib.serializer.serialize(self.tree, tree='dom',
+                                      format='xhtml',
+                                      emit_doctype='xhtml',
+                                      lang_attr='html',
+                                      resolve_entities=False,
+                                      escape_invisible='named',
+                                      omit_optional_tags=False,
+                                      minimize_boolean_attributes=False,
+                                      quote_attr_values=True)
+
+  def serializeHTML(self):
+    self.validate()
+    # Serialize
+    o = html5lib.serializer.serialize(self.tree, tree='dom',
+                                      format='html',
+                                      emit_doctype='html',
+                                      lang_attr='html',
+                                      resolve_entities=False,
+                                      escape_invisible='named',
+                                      omit_optional_tags=False,
+                                      minimize_boolean_attributes=False,
+                                      quote_attr_values=True)
+
+    # lxml fixup for eating whitespace outside root element
+    m = re.search('<!DOCTYPE[^>]+>(\s*)<', o)
+    if m.group(1) == '': # match first to avoid perf hit from searching whole doc
+      o = re.sub('(<!DOCTYPE[^>]+>)<', '\g<1>\n<', o)
+    return o
+
+  def data(self):
+    if (not self.tree):
+      return FileSource.data(self)
+    return self.serializeHTML().encode(self.encoding, 'xmlcharrefreplace')
+    
+  def unicode(self):
+    if (not self.tree):
+      return FileSource.unicode(self)
+    return self.serializeHTML()
+    
+  def injectHeadLink(self, rel, href, tagCode = None):
+    """Inject (prepend) <link> data given in head. 
+       Injected element is tagged with `tagCode`, which can be
+       used to clear it with clearInjectedTags later.
+    """
+    node = self.tree.createElement('link')
+    node.setAttribute('rel', rel)
+    node.setAttribute('href', href)
+    self.validate()
+    
+    head = self.tree.getElementsByTagName('head').item(0)
+    head.insertBefore(node, head.firstChild)
+    node = NodeWrapper(node)
+    self.injectedTags[node] = tagCode or True
+    return node
+
+  def getHeadElements(self, tree):
+    head = self.tree.getElementsByTagName('head').item(0)
+    if (None != head):
+      elements = []
+      node = head.firstChild
+      while (None != node):
+        if (node.nodeType == dom.Node.ELEMENT_NODE):
+          elements.append(NodeWrapper(node))
+        node = node.nextSibling
+      return elements
+    return None
+
 

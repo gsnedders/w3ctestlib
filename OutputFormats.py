@@ -83,7 +83,10 @@ class XHTMLFormat(BasicFormat):
     if hasattr(source, 'hasFlag') and source.hasFlag('HTMLonly'):
       return
     source.adjustContentPaths(self)
-    source.write(self)
+    if isinstance(source, HTMLSource):
+      source.write(self, source.serializeXHTML())
+    else:
+      source.write(self)
 
 class HTMLFormat(BasicFormat):
   """Base class for HTML test suite format. Builds into 'html4' subfolder
