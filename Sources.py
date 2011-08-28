@@ -60,7 +60,7 @@ class SourceTree(object):
   
   def _isIgnored(self, pathList, fileName):
     return (('.hg' in pathList) or ('.svn' in pathList) or ('cvs' in pathList) or
-            (fileName.startswith('.directory')))
+            fileName.startswith('.directory') or ('lock' == fileName))
       
   def isIgnored(self, filePath):
     pathList, fileName = self._splitPath(filePath)
@@ -106,7 +106,10 @@ class SourceTree(object):
     return (not self._isIgnored(pathList, fileName)) and self._isTestCase(pathList, fileName)
       
   def getAssetName(self, filePath):
-    return assetName(filePath)
+    pathList, fileName = self._splitPath(filePath)
+    if (self._isReference(pathList, fileName) or self._isTestCase(pathList, fileName)):
+      return assetName(filePath)
+    return fileName.lower() # support files keep full name
 
   def getAssetType(self, filePath):
     pathList, fileName = self._splitPath(filePath)
