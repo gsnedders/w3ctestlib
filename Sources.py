@@ -128,30 +128,29 @@ class SourceCache:
     self.__cache = {}
     self.sourceTree = sourceTree
 
-  def generateSource(self, sourcepath, relpath, isTest=False):
+  def generateSource(self, sourcepath, relpath, changeCtx=None):
     """Return a FileSource or derivative based on the extensionMap.
-       Creates a TestSource if isTest is true.
 
        Uses a cache to avoid creating more than one of the same object:
        does not support creating two FileSources with the same sourcepath;
        asserts if this is tried. (.htaccess files are not cached.)
+       
+       Cache is bypassed if loading form a change context
     """
-    if self.__cache.has_key(sourcepath):
+    if ((None == changeCtx) and self.__cache.has_key(sourcepath)):
       source = self.__cache[sourcepath]
       assert relpath == source.relpath
       return source
 
     if basename(sourcepath) == '.htaccess':
-      return ConfigSource(sourcepath, relpath)
+      return ConfigSource(sourcepath, relpath, changeCtx)
     mime = getMimeFromExt(sourcepath)
     if mime == 'application/xhtml+xml':
-      if isTest:
-        source = TestSource(sourcepath, relpath)
-      else:
-        source = XHTMLSource(sourcepath, relpath)
+      source = XHTMLSource(sourcepath, relpath, changeCtx)
     else:
-      source = FileSource(sourcepath, relpath, mime)
-    self.__cache[sourcepath] = source
+      source = FileSource(sourcepath, relpath, mime, changeCtx)
+    if (None == changeCtx):
+      self.__cache[sourcepath] = source
     return source
 
 class SourceSet:
@@ -190,14 +189,14 @@ class SourceSet:
           raise Exception("File merge mismatch %s vs %s for %s" % \
                 (cachedSource.sourcepath, source.sourcepath, source.relpath))
 
-  def add(self, sourcepath, relpath, isTest=False):
+  def add(self, sourcepath, relpath):
     """Generate and add FileSource from sourceCache. Return the resulting
        FileSource.
 
        Throws exception if we already have a FileSource with the same path
        relpath but different contents.
     """
-    source = self.sourceCache.generateSource(sourcepath, relpath, isTest)
+    source = self.sourceCache.generateSource(sourcepath, relpath)
     self.addSource(source)
     return source
 
@@ -252,6 +251,9 @@ class StringReader(object):
     return ''
 
 
+class SourceMetaError(Exception):
+  pass
+
 class FileSource:
   """Object representing a file. Two FileSources are equal if they represent
      the same file contents. It is recommended to use a SourceCache to generate
@@ -274,6 +276,9 @@ class FileSource:
     self.changeCtx  = changeCtx
     self.error      = None
     self.encoding   = 'utf-8'
+    self.refs       = {}
+    self.metadata   = None
+    self.metaSource = None
 
   def __eq__(self, other):
     if not isinstance(other, FileSource):
@@ -312,11 +317,22 @@ class FileSource:
     
   def parse(self):
     """Parses and validates FileSource data from sourcepath."""
-    pass
+    self.loadMetadata()
+
+  def validate(self):
+    """Ensure data is loaded from sourcepath."""
+    self.parse()
 
   def adjustContentPaths(self, format):
-    """Adjust any paths in file content for output format"""
-    pass
+    """Adjust any paths in file content for output format
+       XXX need to account for group paths"""
+    for refType, refPath, refNode, refSource in self.refs.itervalues():
+      if refSource:
+        refPath = relativeURL(format.dest(self.relpath), format.dest(refSource.relpath))
+      else:
+        refPath = relativeURL(format.dest(self.relpath), format.dest(refPath))
+      if (refPath != refNode.get('href')):
+        refNode.set('href', refPath)
     
   def write(self, format):
     """Writes FileSource.data() out to `self.relpath` through Format `format`."""
@@ -337,6 +353,134 @@ class FileSource:
     repo = hg.repository(ui.ui(), '.')  # XXX should pass repo instead of recreating
     fctx = repo.filectx(path, fileid=repo.file(path).tip())
     return fctx.rev() + 1   # svn starts at 1, hg starts at 0 - XXX return revision number for now, eventually switch to changeset id and date
+
+  def revision(self):
+    """Returns svn revision number of last commit to this file or any related file.
+       XXX also needs to account for .meta file
+    """
+    revision = self.revisionOf(self.sourcepath)
+    for refName in self.refs:
+      refPath = self.refs[refName][1]
+      refRevision = self.revisionOf(self.sourcepath, refPath) # XXX also follow reference chains
+      if revision < refRevision:
+        revision = refRevision
+    return revision
+
+  def loadMetadata(self):
+    """Look for .meta file and load any metadata from it if present
+    """
+    pass
+    
+  def augmentMetadata(self, next=None, prev=None, reference=None, notReference=None):
+    if (self.metaSource):
+      self.metaSource.augmentMetadata(next, prev, reference, notReference)
+    return
+    
+  # See http://wiki.csswg.org/test/css2.1/format for more info on metadata
+  def getMetadata(self, asUnicode = False):
+    """Return dictionary of test metadata. Returns None and stores error
+       exception in self.error if there is a parse or metadata error.
+       Data fields include:
+         - asserts [list of strings]
+         - credits [list of (name string, url string) tuples]
+         - flags   [list of token strings]
+         - links   [list of url strings]
+         - name    [string]
+         - title   [string]
+         - references [list of (reftype, relpath) per reference; None if not reftest]
+         - revision   [revision id of last commit]
+         - selftest [bool]
+       Strings are given in UTF-8 unless asUnicode==True.
+    """
+    
+    self.validate()
+
+    if self.error:
+      return None
+
+    def encode(str):
+      return str if asUnicode else intern(str.encode('utf-8'))
+
+    def escape(str, andIntern = True):
+      return str if asUnicode else intern(escapeToNamedASCII(str)) if andIntern else escapeToNamedASCII(str)
+
+    references = None
+    usedRefs = {}
+    usedRefs[self.name()] = '=='
+    def listReferences(source):
+      for refType, refPath, refNode, refSource in source.refs.values():
+        refName = refSource.name() if refSource else assetName(refPath)
+        if (refName not in usedRefs):
+          usedRefs[refName] = refType
+          if (refSource):
+            references.append({'type': refType, 'relpath': self.relativeURL(refSource)})
+            if ('==' == refType): # XXX don't follow != refs for now (until we export proper ref trees)
+              listReferences(refSource)
+          else:
+            references.append({'type': refType, 'relpath': refPath, 'name': refName})
+    if (self.refs):
+      references = []
+      listReferences(self)
+
+    if (self.metadata):
+      data = {'asserts'   : [escape(assertion, False) for assertion in self.metadata['asserts']],
+              'credits'   : [(escape(name), encode(link)) for name, link in self.metadata['credits']],
+              'flags'     : self.metadata['flags'],
+              'links'     : [encode(link) for link in self.metadata['links']],
+              'name'      : encode(self.name()),
+              'title'     : escape(self.metadata['title'], False),
+              'references': references,
+              'revision'  : self.revision(),
+              'selftest'  : self.isSelftest()
+             }
+      return data
+    return None
+
+  def addReference(self, referenceSource, match = None):
+    """Add reference source."""
+    self.validate()
+    refName = referenceSource.name()
+    refPath = self.relativeURL(referenceSource)
+    if refName not in self.refs:
+      node = None
+      if match == '==':
+        node = self.augmentMetadata(reference=referenceSource).reference
+      elif match == '!=':
+        node = self.augmentMetadata(notReference=referenceSource).notReference
+      self.refs[refName] = (match, refPath, node, referenceSource)
+    else:
+      node = self.refs[refName][2]
+      node.set('href', refPath)
+      if (match):
+        node.set('rel', 'mismatch' if ('!=' == match) else 'match')
+      else:
+        match = self.refs[refName][0]
+      self.refs[refName] = (match, refPath, node, referenceSource)
+
+  def getReferencePaths(self):
+    """Get list of paths to references as tuple(path, relPath, refType)."""
+    self.validate()
+    return [(os.path.join(os.path.dirname(self.sourcepath), ref[1]), 
+             os.path.join(os.path.dirname(self.relpath), ref[1]),
+             ref[0]) 
+            for ref in self.refs.values()]
+    
+  def isTest(self):
+    self.validate()
+    return bool(self.metadata) and bool(self.metadata.get('links'))
+    
+  def isReftest(self):
+    return self.isTest() and bool(self.refs)
+
+  def isSelftest(self):
+    return self.isTest() and (not bool(self.refs))
+        
+  def hasFlag(self, flag):
+    data = self.getMetadata()
+    if data:
+      return flag in data['flags']
+    return False
+
 
     
 class ConfigSource(FileSource):
@@ -484,7 +628,6 @@ class XHTMLSource(FileSource):
     FileSource.__init__(self, sourcepath, relpath, changeCtx = changeCtx)
     self.tree = None
     self.injectedTags = {}
-    self.alteredContent = False
 
   def cacheAsParseError(self, filename, e):
       """Replace document with an error message."""
@@ -499,6 +642,10 @@ class XHTMLSource(FileSource):
       self.tree = etree.parse(StringReader(self.data()), parser=self.__parser)
       self.encoding = self.tree.docinfo.encoding or 'utf-8'
       self.injectedTags = {}
+
+      FileSource.loadMetadata(self)
+      if ((not self.metadata) and self.tree and (not self.error)):
+        self.extractMetadata(self.tree)
     except etree.ParseError, e:
       self.cacheAsParseError(self.sourcepath, e)
       e.W3CTestLibErrorLocation = self.sourcepath
@@ -582,93 +729,13 @@ class XHTMLSource(FileSource):
     self.tree = None
 
 
-class TestSourceMetaError(Exception):
-  pass
-
-class TestSource(XHTMLSource):
-  """XHTMLSource representing the main test or reference file. Supports metadata lookups."""
-
-  def __init__(self, sourcepath, relpath, changeCtx = None):
-    """Initialize TestSource by loading from XHTML file `sourcepath`.
-       Parse errors are reported as caught exceptions in `self.error`,
-       and the source is replaced with an XHTML error message.
-    """
-    XHTMLSource.__init__(self, sourcepath, relpath, changeCtx = changeCtx)
-    self.refs = {}
-    self.metadata = None
-
-  def addReference(self, referenceSource, match = None):
-    """Sets test to be a reftest, with reference source referenceSource."""
-    self.validate()
-    refName = referenceSource.name()
-    refPath = self.relativeURL(referenceSource)
-    if refName not in self.refs:
-      node = None
-      if match == '==':
-        node = self.augmentHead(reference=referenceSource).reference
-      elif match == '!=':
-        node = self.augmentHead(notReference=referenceSource).notReference
-      self.refs[refName] = (match, refPath, node, referenceSource)
-    else:
-      node = self.refs[refName][2]
-      node.set('href', refPath)
-      if (match):
-        node.set('rel', 'mismatch' if ('!=' == match) else 'match')
-      else:
-        match = self.refs[refName][0]
-      self.refs[refName] = (match, refPath, node, referenceSource)
-
-  def getReferencePaths(self):
-    """Get list of paths to references as tuple(path, relPath, refType)."""
-    self.validate()
-    return [(os.path.join(os.path.dirname(self.sourcepath), ref[1]), 
-             os.path.join(os.path.dirname(self.relpath), ref[1]),
-             ref[0]) 
-            for ref in self.refs.values()]
-    
-  def isTest(self):
-    self.validate()
-    return bool(self.metadata.get('links'))
-    
-  def isReftest(self):
-    return self.isTest() and bool(self.refs)
-
-  def isSelftest(self):
-    return self.isTest() and (not bool(self.refs))
-        
   def revision(self):
-    """Returns svn revision number of last commit.
+    """Returns hg revision info number of last commit as tuple (rev, hash, date)
        If test is a reftest, revision will be latest of test or references
-       XXX also needs to account for other dependencies, ie: stylesheets, images, fonts, .meta file
+       XXX also needs to account for other dependencies, ie: stylesheets, images, fonts, etc
     """
-    revision = self.revisionOf(self.sourcepath)
-    for refName in self.refs:
-      refPath = self.refs[refName][1]
-      refRevision = self.revisionOf(self.sourcepath, refPath) # XXX also follow reference chains
-      if revision < refRevision:
-        revision = refRevision
+    revision = FileSource.revision(self)
     return revision
-
-  def parse(self):
-    XHTMLSource.parse(self)
-    self.metadata = None
-    if (self.tree and not self.error):
-      # XXX need to look for parallel .meta file and parse that instead if present
-      # be sure to get .meta file from self.changeCtx if present
-      self.extractMetadata(self.tree)
-      
-  def adjustContentPaths(self, format):
-    """Adjust any paths in file content for output format
-       XXX need to account for group paths"""
-    for refType, refPath, refNode, refSource in self.refs.itervalues():
-      if refSource:
-        refPath = relativeURL(format.dest(self.relpath), format.dest(refSource.relpath))
-      else:
-        refPath = relativeURL(format.dest(self.relpath), format.dest(refPath))
-      if (refPath != refNode.get('href')):
-        refNode.set('href', refPath)
-        self.alteredContent = True
-      
 
   def extractMetadata(self, tree):
     """Extract metadata from tree."""
@@ -687,7 +754,7 @@ class TestSource(XHTMLSource):
     head = tree.getroot().find(xhtmlns+'head')
     readFlags = False
     try:
-      if (head == None): raise TestSourceMetaError("Missing <head> element")
+      if (head == None): raise SourceMetaError("Missing <head> element")
       # Scan and cache metadata
       for node in head:
         if (node.tag == xhtmlns+'link'):
@@ -695,9 +762,9 @@ class TestSource(XHTMLSource):
           if tokenMatch('help', node.get('rel')):
             link = node.get('href').strip()
             if not link:
-              raise TestSourceMetaError("Help link missing href value.")
+              raise SourceMetaError("Help link missing href value.")
             if not link.startswith('http://') or link.startswith('https://'):
-              raise TestSourceMetaError("Help link must be absolute URL.")
+              raise SourceMetaError("Help link must be absolute URL.")
             if link.find('propdef') == -1:
               links.append(link)
           # credits
@@ -705,28 +772,28 @@ class TestSource(XHTMLSource):
             name = node.get('title')
             name = name.strip() if name else name
             if not name:
-              raise TestSourceMetaError("Author link missing name (title attribute).")
+              raise SourceMetaError("Author link missing name (title attribute).")
             link = node.get('href').strip()
             if not link:
-              raise TestSourceMetaError("Author link missing contact URL (http or mailto).")
+              raise SourceMetaError("Author link missing contact URL (http or mailto).")
             credits.append((name, link))
           # == references
           elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
             refPath = node.get('href').strip()
             if not refPath:
-              raise TestSourceMetaError("Reference link missing href value.")
+              raise SourceMetaError("Reference link missing href value.")
             refName = assetName(refPath)
             if (refName in self.refs):
-              raise TestSourceMetaError("Reference already specified.")
+              raise SourceMetaError("Reference already specified.")
             self.refs[refName] = ('==', refPath, node, None)
           # != references
           elif tokenMatch('mismatch', node.get('rel')) or tokenMatch('not-reference', node.get('rel')):
             refPath = node.get('href').strip()
             if not refPath:
-              raise TestSourceMetaError("Reference link missing href value.")
+              raise SourceMetaError("Reference link missing href value.")
             refName = assetName(refPath)
             if (refName in self.refs):
-              raise TestSourceMetaError("Reference already specified.")
+              raise SourceMetaError("Reference already specified.")
             self.refs[refName] = ('!=', refPath, node, None)
         elif node.tag == xhtmlns+'meta':
           metatype = node.get('name')
@@ -734,7 +801,7 @@ class TestSource(XHTMLSource):
           # requirement flags
           if metatype == 'flags':
             if readFlags:
-              raise TestSourceMetaError("Flags must only be specified once.")
+              raise SourceMetaError("Flags must only be specified once.")
             readFlags = True
             for flag in sorted(node.get('content').split()):
               flags.append(intern(flag))
@@ -750,91 +817,9 @@ class TestSource(XHTMLSource):
           self.metadata['title'] = title.strip()
 
     # Cache error and return
-    except TestSourceMetaError, e:
+    except SourceMetaError, e:
       e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
 
   
-  # See http://wiki.csswg.org/test/css2.1/format for more info on metadata
-  def getMetadata(self, asUnicode = False):
-    """Return dictionary of test metadata. Returns None and stores error
-       exception in self.error if there is a parse or metadata error.
-       Data fields include:
-         - asserts [list of strings]
-         - credits [list of (name string, url string) tuples]
-         - flags   [list of token strings]
-         - links   [list of url strings]
-         - name    [string]
-         - title   [string]
-         - references [list of (reftype, relpath) per reference; None if not reftest]
-         - revision   [revision id of last commit]
-         - selftest [bool]
-       Strings are given in UTF-8 unless asUnicode==True.
-    """
-    
-    self.validate()
-
-    if self.error:
-      return None
-
-    def encode(str):
-      return str if asUnicode else intern(str.encode('utf-8'))
-
-    def escape(str, andIntern = True):
-      return str if asUnicode else intern(escapeToNamedASCII(str)) if andIntern else escapeToNamedASCII(str)
-
-    references = None
-    usedRefs = {}
-    usedRefs[self.name()] = '=='
-    def listReferences(source):
-      for refType, refPath, refNode, refSource in source.refs.values():
-        refName = refSource.name() if refSource else assetName(refPath)
-        if (refName not in usedRefs):
-          usedRefs[refName] = refType
-          if (refSource):
-            references.append({'type': refType, 'relpath': self.relativeURL(refSource)})
-            if (isinstance(refSource, TestSource) and ('==' == refType)): # XXX don't follow != refs for now (until we export proper ref trees)
-              listReferences(refSource)
-          else:
-            references.append({'type': refType, 'relpath': refPath, 'name': refName})
-    if (self.refs):
-      references = []
-      listReferences(self)
-      
-    if (self.metadata):
-      data = {'asserts'   : [escape(assertion, False) for assertion in self.metadata['asserts']],
-              'credits'   : [(escape(name), encode(link)) for name, link in self.metadata['credits']],
-              'flags'     : self.metadata['flags'],
-              'links'     : [encode(link) for link in self.metadata['links']],
-              'name'      : encode(self.name()),
-              'title'     : escape(self.metadata['title'], False),
-              'references': references,
-              'revision'  : self.revision(),
-              'selftest'  : self.isSelftest()
-             }
-      return data
-    return None
-
-  def hasFlag(self, flag):
-    data = self.getMetadata()
-    if data:
-      return flag in data['flags']
-    return False
-
-  def augmentHead(self, next=None, prev=None, reference=None, notReference=None):
-    """Add extra useful metadata to the head. All arguments are optional.
-         * Adds next/prev links to  next/prev Sources given
-         * Adds reference link to reference Source given
-    """
-    self.validate()
-    if next:
-      next = self.injectHeadTag('<link rel="next" href="%s"/>' % self.relativeURL(next), 'next')
-    if prev:
-      prev = self.injectHeadTag('<link rel="prev" href="%s"/>' % self.relativeURL(prev), 'prev')
-    if reference:
-      reference = self.injectHeadTag('<link rel="match" href="%s"/>' % self.relativeURL(reference), 'ref')
-    if notReference:
-      notReference = self.injectHeadTag('<link rel="mismatch" href="%s"/>' % self.relativeURL(notReference), 'not-ref')
-    NodeTuple = collections.namedtuple('NodeTuple', ['next', 'prev', 'reference', 'notReference'])
-    return NodeTuple(next, prev, reference, notReference)
 

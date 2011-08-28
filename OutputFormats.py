@@ -6,7 +6,7 @@
 import re
 import os
 from os.path import join, exists, splitext, dirname
-from Sources import TestSource, XHTMLSource
+from Sources import XHTMLSource
 
 class ExtensionMap:
   """ Given a file extension mapping (e.g. {'.xht' : '.htm'}), provides
@@ -121,14 +121,14 @@ class XHTMLPrintFormat(XHTMLFormat):
     self.testSuiteName = testSuiteName
 
   def write(self, source):
-    if isinstance(source, TestSource):
+    if isinstance(source, XHTMLSource):
       if not source.hasFlag('HTMLonly'):
         source.write(self, self.testTransform(source))
     else:
       XHTMLFormat.write(self, source)
 
   def testTransform(self, source):
-    assert isinstance(source, TestSource)
+    assert isinstance(source, XHTMLSource)
     output = source.serializeXHTML()
 
     headermeta = {'suitename' : self.testSuiteName,

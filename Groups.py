@@ -8,7 +8,7 @@ import filecmp
 import os.path
 import Utils
 from os.path import exists, join
-from Sources import SourceCache, SourceSet, ConfigSource, ReftestManifest, TestSource
+from Sources import SourceCache, SourceSet, ConfigSource, ReftestManifest
 from Utils import listfiles
 
 excludeDirs = ['CVS', '.svn', '.hg']
@@ -81,8 +81,8 @@ class TestGroup:
 
       # Import tests
       for (testSrc, refSrc), (testRel, refRel), refType in self.manifest:
-        test = sourceCache.generateSource(testSrc, testRel, True)
-        ref = sourceCache.generateSource(refSrc, refRel, True)
+        test = sourceCache.generateSource(testSrc, testRel)
+        ref = sourceCache.generateSource(refSrc, refRel)
         test.addReference(ref, refType)
         self.tests.addSource(test)
     else:
@@ -96,7 +96,7 @@ class TestGroup:
       for fileName in fileNameList:
         filePath = join(importDir, fileName)
         if sourceTree.isTestCase(filePath):
-          test = sourceCache.generateSource(filePath, fileName, True)
+          test = sourceCache.generateSource(filePath, fileName)
           if (test.isTest()):
             self.tests.addSource(test)
 
@@ -106,14 +106,13 @@ class TestGroup:
         usedRefs[test.name()] = '=='
         def loadReferences(source): # XXX need to verify refType for mutual exclusion (ie: a == b != a)
           for refSrcPath, refRelPath, refType in source.getReferencePaths():
-            ref = sourceCache.generateSource(refSrcPath, refRelPath, True)
+            ref = sourceCache.generateSource(refSrcPath, refRelPath)
             source.addReference(ref)
             if (ref.name() not in usedRefs):
               usedRefs[ref.name()] = refType
               if (ref not in self.tests):
                 self.refs.addSource(ref)
-              if (isinstance(ref, TestSource)):
-                loadReferences(ref)
+              loadReferences(ref)
         loadReferences(test)
 
 
