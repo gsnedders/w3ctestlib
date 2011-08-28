@@ -6,7 +6,7 @@
 import re
 import os
 from os.path import join, exists, splitext, dirname
-from Sources import XHTMLSource
+from Sources import XHTMLSource, HTMLSource
 
 class ExtensionMap:
   """ Given a file extension mapping (e.g. {'.xht' : '.htm'}), provides
