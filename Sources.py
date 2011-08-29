@@ -20,7 +20,7 @@ from mercurial import ui, hg
 class SourceTree(object):
   """Class that manages structure of test repository source.
      Temporarily hard-coded path and filename rules, this should be configurable.
-     This is also a good place to hook the repository code to..."""
+  """
 
   def __init__(self, repository):
     self.mTestExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml']
