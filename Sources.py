@@ -22,10 +22,10 @@ class SourceTree(object):
      Temporarily hard-coded path and filename rules, this should be configurable.
      This is also a good place to hook the repository code to..."""
 
-  def __init__(self):
+  def __init__(self, repository):
     self.mTestExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml']
     self.mReferenceExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml', '.png', '.svg']
-    pass
+    self.mRepository = repository
   
   def _splitPath(self, filePath):
     """split a path into a list of directory names and the file name
@@ -358,8 +358,8 @@ class FileSource:
     """
     if relpath:
       path = os.path.join(os.path.dirname(path), relpath)
-    repo = hg.repository(ui.ui(), '.')  # XXX should pass repo instead of recreating
-    fctx = repo.filectx(path, fileid=repo.file(path).tip())
+    repo = self.sourceTree.mRepository
+    fctx = repo.filectx(path, fileid = repo.file(path).tip())
     return fctx.rev() + 1   # svn starts at 1, hg starts at 0 - XXX return revision number for now, eventually switch to changeset id and date
 
   def revision(self):

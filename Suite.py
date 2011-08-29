@@ -10,6 +10,7 @@ from Sources import SourceTree, SourceCache
 from shutil import copytree, rmtree
 from os.path import join
 import os
+from mercurial import ui, hg
 
 class TestSuite:
   """Representation of a standard CSS test suite."""
@@ -21,7 +22,7 @@ class TestSuite:
 
     self.defaultReftestRelpath='reftest.list'
     self.groups = {}
-    self.sourcecache = SourceCache(SourceTree())
+    self.sourcecache = SourceCache(SourceTree(hg.repository(ui.ui(), '.')))
     self.formats = ('html4', 'xhtml1') # FIXME, hardcoded list is lame
     self.rawgroups = {}
 
