@@ -405,17 +405,17 @@ class FileSource:
       return None
 
     def encode(str):
-      return str if asUnicode else intern(str.encode('utf-8'))
+      return intern(str.encode('utf-8'))
 
     def escape(str, andIntern = True):
-      return str if asUnicode else intern(escapeToNamedASCII(str)) if andIntern else escapeToNamedASCII(str)
+      return str.encode('utf-8') if asUnicode else intern(escapeToNamedASCII(str)) if andIntern else escapeToNamedASCII(str)
 
     references = None
     usedRefs = {}
     usedRefs[self.name()] = '=='
     def listReferences(source):
       for refType, refPath, refNode, refSource in source.refs.values():
-        refName = refSource.name() if refSource else self.sourceTree.getAssetName(join(sourcePath, refPath))
+        refName = refSource.name() if refSource else self.sourceTree.getAssetName(join(self.sourcepath, refPath))
         if (refName not in usedRefs):
           usedRefs[refName] = refType
           if (refSource):
@@ -712,12 +712,12 @@ class XHTMLSource(FileSource):
     return o
 
   def data(self):
-    if (not self.tree):
+    if ((not self.tree) or (self.metaSource)):
       return FileSource.data(self)
     return self.serializeXHTML().encode(self.encoding, 'xmlcharrefreplace')
     
   def unicode(self):
-    if (not self.tree):
+    if ((not self.tree) or (self.metaSource)):
       return FileSource.unicode(self)
     return self.serializeXHTML()
     
@@ -807,7 +807,7 @@ class XHTMLSource(FileSource):
             refPath = node.get('href').strip()
             if not refPath:
               raise SourceMetaError("Reference link missing href value.")
-            refName = self.sourcetree.getAssetName(join(self.sourcepath, refPath))
+            refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
             if (refName in self.refs):
               raise SourceMetaError("Reference already specified.")
             self.refs[refName] = ('!=', refPath, node, None)
@@ -950,12 +950,12 @@ class HTMLSource(XHTMLSource):
     return o
 
   def data(self):
-    if (not self.tree):
+    if ((not self.tree) or (self.metaSource)):
       return FileSource.data(self)
     return self.serializeHTML().encode(self.encoding, 'xmlcharrefreplace')
     
   def unicode(self):
-    if (not self.tree):
+    if ((not self.tree) or (self.metaSource)):
       return FileSource.unicode(self)
     return self.serializeHTML()
     

@@ -51,7 +51,7 @@ class TestGroup:
 
     # Load htaccess
     htapath = join(importDir, '.htaccess')
-    self.htaccess = ConfigSource(htapath, '.htaccess') \
+    self.htaccess = ConfigSource(sourceTree, htapath, '.htaccess') \
                     if exists(htapath) else None
 
     # Load support files

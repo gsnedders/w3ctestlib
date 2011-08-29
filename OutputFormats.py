@@ -124,7 +124,7 @@ class XHTMLPrintFormat(XHTMLFormat):
     self.testSuiteName = testSuiteName
 
   def write(self, source):
-    if isinstance(source, XHTMLSource):
+    if (isinstance(source, XHTMLSource) and (not isinstance(source, HTMLSource))):
       if not source.hasFlag('HTMLonly'):
         source.write(self, self.testTransform(source))
     else:
