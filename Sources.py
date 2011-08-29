@@ -151,6 +151,8 @@ class SourceCache:
       source = XHTMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
     elif (mime == 'text/html'):
       source = HTMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
+    elif ((mime == 'application/xml') or (mime == 'image/svg+xml')):
+      source = XMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
     else:
       source = FileSource(self.sourceTree, sourcepath, relpath, mime, changeCtx)
     if (None == changeCtx):
@@ -361,7 +363,7 @@ class FileSource:
     return fctx.rev() + 1   # svn starts at 1, hg starts at 0 - XXX return revision number for now, eventually switch to changeset id and date
 
   def revision(self):
-    """Returns svn revision number of last commit to this file or any related file.
+    """Returns svn revision number of last commit to this file or any related file, references, support files, etc.
        XXX also needs to account for .meta file
     """
     revision = self.revisionOf(self.sourcepath)
@@ -602,8 +604,8 @@ class ReftestManifest(ConfigSource):
 import Utils # set up XML catalog
 xhtmlns = '{http://www.w3.org/1999/xhtml}'
 
-class XHTMLSource(FileSource):
-  """FileSource object with support for XHTML->HTML conversions."""
+class XMLSource(FileSource):
+  """FileSource object with support reading XML trees."""
 
   # Public Data
   syntaxErrorDoc = \
@@ -612,7 +614,7 @@ class XHTMLSource(FileSource):
   <html xmlns="http://www.w3.org/1999/xhtml">
     <head><title>Syntax Error</title></head>
     <body>
-      <p>The XHTML file <![CDATA[%s]]> contains a syntax error and could not be parsed.
+      <p>The XML file <![CDATA[%s]]> contains a syntax error and could not be parsed.
       Please correct it and try again.</p>
       <p>The parser's error report was:</p>
       <pre><![CDATA[%s]]></pre>
@@ -630,7 +632,7 @@ class XHTMLSource(FileSource):
   # Public Methods
 
   def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
-    """Initialize XHTMLSource by loading from XHTML file `sourcepath`.
+    """Initialize XMLSource by loading from XML file `sourcepath`.
       Parse errors are reported as caught exceptions in `self.error`,
       and the source is replaced with an XHTML error message.
     """
@@ -671,13 +673,15 @@ class XHTMLSource(FileSource):
        Injected element is tagged with `tagCode`, which can be
        used to clear it with clearInjectedTags later.
     """
-    node = etree.Element('link', {'rel': rel, 'href': href})
     self.validate()
     head = self.tree.getroot().find(xhtmlns+'head')
-    node.tail = head.text
-    head.insert(0, node)
-    self.injectedTags[node] = tagCode or True
-    return node
+    if (head):
+      node = etree.Element('link', {'rel': rel, 'href': href})
+      node.tail = head.text
+      head.insert(0, node)
+      self.injectedTags[node] = tagCode or True
+      return node
+    return None
 
   def clearInjectedTags(self, tagCode = None):
     """Clears all injected elements from the tree, or clears injected
@@ -688,38 +692,19 @@ class XHTMLSource(FileSource):
       node.getparent().remove(node)
       del self.injectedTags[node]
 
-  def serializeXHTML(self):
+  def serializeXML(self):
     self.validate()
     return etree.tounicode(self.tree)
-
-  def serializeHTML(self):
-    self.validate()
-    # Serialize
-    o = html5lib.serializer.serialize(self.tree, tree='lxml',
-                                      format='html',
-                                      emit_doctype='html',
-                                      lang_attr='html',
-                                      resolve_entities=False,
-                                      escape_invisible='named',
-                                      omit_optional_tags=False,
-                                      minimize_boolean_attributes=False,
-                                      quote_attr_values=True)
-
-    # lxml fixup for eating whitespace outside root element
-    m = re.search('<!DOCTYPE[^>]+>(\s*)<', o)
-    if m.group(1) == '': # match first to avoid perf hit from searching whole doc
-      o = re.sub('(<!DOCTYPE[^>]+>)<', '\g<1>\n<', o)
-    return o
 
   def data(self):
     if ((not self.tree) or (self.metaSource)):
       return FileSource.data(self)
-    return self.serializeXHTML().encode(self.encoding, 'xmlcharrefreplace')
+    return self.serializeXML().encode(self.encoding, 'xmlcharrefreplace')
     
   def unicode(self):
     if ((not self.tree) or (self.metaSource)):
       return FileSource.unicode(self)
-    return self.serializeXHTML()
+    return self.serializeXML()
     
   def write(self, format, output=None):
     """Write Source through OutputFormat `format`.
@@ -737,15 +722,6 @@ class XHTMLSource(FileSource):
     self.tree = None
 
 
-  def revision(self):
-    """Returns hg revision info number of last commit as tuple (rev, hash, date)
-       If test is a reftest, revision will be latest of test or references
-       XXX also needs to account for other dependencies, ie: stylesheets, images, fonts, etc
-    """
-    revision = FileSource.revision(self)
-    return revision
-
-  
   def getHeadElements(self, tree):
     head = tree.getroot().find(xhtmlns+'head')
     if (None != head):
@@ -855,6 +831,41 @@ class XHTMLSource(FileSource):
      return NodeTuple(next, prev, reference, notReference)
 
 
+class XHTMLSource(XMLSource):
+  """FileSource object with support for XHTML->HTML conversions."""
+
+  # Public Methods
+
+  def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
+    """Initialize XHTMLSource by loading from XHTML file `sourcepath`.
+      Parse errors are reported as caught exceptions in `self.error`,
+      and the source is replaced with an XHTML error message.
+    """
+    XMLSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
+
+  def serializeXHTML(self):
+    return self.serializeXML()
+
+  def serializeHTML(self):
+    self.validate()
+    # Serialize
+    o = html5lib.serializer.serialize(self.tree, tree='lxml',
+                                      format='html',
+                                      emit_doctype='html',
+                                      lang_attr='html',
+                                      resolve_entities=False,
+                                      escape_invisible='named',
+                                      omit_optional_tags=False,
+                                      minimize_boolean_attributes=False,
+                                      quote_attr_values=True)
+
+    # lxml fixup for eating whitespace outside root element
+    m = re.search('<!DOCTYPE[^>]+>(\s*)<', o)
+    if m.group(1) == '': # match first to avoid perf hit from searching whole doc
+      o = re.sub('(<!DOCTYPE[^>]+>)<', '\g<1>\n<', o)
+    return o
+
+
 class NodeWrapper(object):
   """Wrapper object for dom nodes to give them an etree-like api
   """
@@ -884,7 +895,7 @@ class NodeWrapper(object):
     self.node.setAttribute(attr, value)
   
   
-class HTMLSource(XHTMLSource):
+class HTMLSource(XMLSource):
   """FileSource object with support for HTML metadata and HTML->XHTML conversions (untested)."""
 
   # Private Data and Methods
@@ -897,7 +908,7 @@ class HTMLSource(XHTMLSource):
   def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
     """Initialize HTMLSource by loading from HTML file `sourcepath`.
     """
-    XHTMLSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
+    XMLSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
 
   def parse(self):
     """Parse file and store any parse errors in self.error"""
