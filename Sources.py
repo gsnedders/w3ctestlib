@@ -391,6 +391,7 @@ class FileSource:
        Data fields include:
          - asserts [list of strings]
          - credits [list of (name string, url string) tuples]
+         - reviewers [ list of (name string, url string) tuples]
          - flags   [list of token strings]
          - links   [list of url strings]
          - name    [string]
@@ -433,6 +434,7 @@ class FileSource:
     if (self.metadata):
       data = {'asserts'   : [escape(assertion, False) for assertion in self.metadata['asserts']],
               'credits'   : [(escape(name), encode(link)) for name, link in self.metadata['credits']],
+              'reviewers' : [(escape(name), encode(link)) for name, link in self.metadata['reviewers']],
               'flags'     : [encode(flag) for flag in self.metadata['flags']],
               'links'     : [encode(link) for link in self.metadata['links']],
               'name'      : encode(self.name()),
@@ -731,12 +733,13 @@ class XMLSource(FileSource):
   
   def extractMetadata(self, tree):
     """Extract metadata from tree."""
-    links = []; credits = []; flags = []; asserts = [];
-    self.metadata = {'asserts' : asserts,
-                     'credits' : credits,
-                     'flags'   : flags,
-                     'links'   : links,
-                     'title'   : ''
+    links = []; credits = []; reviewers = []; flags = []; asserts = [];
+    self.metadata = {'asserts'   : asserts,
+                     'credits'   : credits,
+                     'reviewers' : reviewers,
+                     'flags'     : flags,
+                     'links'     : links,
+                     'title'     : ''
                     }
 
     def tokenMatch(token, string):
@@ -759,16 +762,6 @@ class XMLSource(FileSource):
               raise SourceMetaError("Help link must be absolute URL.")
             if link.find('propdef') == -1:
               links.append(link)
-          # credits
-          elif tokenMatch('author', node.get('rel')):
-            name = node.get('title')
-            name = name.strip() if name else name
-            if not name:
-              raise SourceMetaError("Author link missing name (title attribute).")
-            link = node.get('href').strip()
-            if not link:
-              raise SourceMetaError("Author link missing contact URL (http or mailto).")
-            credits.append((name, link))
           # == references
           elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
             refPath = node.get('href').strip()
@@ -787,6 +780,27 @@ class XMLSource(FileSource):
             if (refName in self.refs):
               raise SourceMetaError("Reference already specified.")
             self.refs[refName] = ('!=', refPath, node, None)
+          else: # may have both author and reviewer in the same link
+            # credits
+            if tokenMatch('author', node.get('rel')):
+              name = node.get('title')
+              name = name.strip() if name else name
+              if not name:
+                raise SourceMetaError("Author link missing name (title attribute).")
+              link = node.get('href').strip()
+              if not link:
+                raise SourceMetaError("Author link missing contact URL (http or mailto).")
+              credits.append((name, link))
+            # reviewers
+            if tokenMatch('reviewer', node.get('rel')):
+              name = node.get('title')
+              name = name.strip() if name else name
+              if not name:
+                raise SourceMetaError("Reviewer link missing name (title attribute).")
+              link = node.get('href').strip()
+              if not link:
+                raise SourceMetaError("Reviewer link missing contact URL (http or mailto).")
+              reviewers.append((name, link))
         elif node.tag == xhtmlns+'meta':
           metatype = node.get('name')
           metatype = metatype.strip() if metatype else metatype
