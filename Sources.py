@@ -760,7 +760,7 @@ class XMLSource(FileSource):
               raise SourceMetaError("Help link missing href value.")
             if not link.startswith('http://') or link.startswith('https://'):
               raise SourceMetaError("Help link must be absolute URL.")
-            if link.find('propdef') == -1:
+            if link.find('propdef') == -1:    # XXX Remove this
               links.append(link)
           # == references
           elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
