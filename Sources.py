@@ -47,7 +47,7 @@ class SourceTree(object):
             (self._isApprovedPath(pathList) or self._isSubmittedPath(pathList)))
       
   def _isApprovedPath(self, pathList):
-    return (('approved' in pathList) and ('approved' == pathList[0]) and ('src' in pathList))
+    return ((1 < len(pathList)) and ('approved' == pathList[0]) and (('support' == pathList[1]) or ('src' in pathList)))
       
   def isApprovedPath(self, filePath):
     pathList, fileName = self._splitPath(filePath)
