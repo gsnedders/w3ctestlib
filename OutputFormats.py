@@ -52,6 +52,7 @@ class BasicFormat:
     """Returns final destination of relpath in this format and ensures that the
        parent directory exists."""
     # Translate path
+    relpath = self.extMap.translate(relpath)
     dest = join(self.root, self.subdir, relpath) if self.subdir \
            else join(self.root, relpath)
     # Ensure parent
@@ -73,11 +74,12 @@ class XHTMLFormat(BasicFormat):
   """Base class for XHTML test suite format. Builds into 'xhtml1' subfolder
      of root.
   """
-  formatDirName = 'xhtml1'
   indexExt      = '.xht'
 
-  def __init__(self, destroot, extMap=None):
-    BasicFormat.__init__(self, join(destroot, self.formatDirName), extMap)
+  def __init__(self, destroot, extMap=None, outputDirName='xhtml1'):
+    if not extMap:
+      extMap = {'.htm' : '.xht', '.html' : '.xhtml' }
+    BasicFormat.__init__(self, join(destroot, outputDirName), extMap)
   def write(self, source):
     # skip HTMLonly tests
     if hasattr(source, 'hasFlag') and source.hasFlag('HTMLonly'):
@@ -92,15 +94,11 @@ class HTMLFormat(BasicFormat):
   """Base class for HTML test suite format. Builds into 'html4' subfolder
      of root.
   """
-  formatDirName = 'html4'
 
-  def __init__(self, destroot, extMap=None):
+  def __init__(self, destroot, extMap=None, outputDirName='html4'):
     if not extMap:
       extMap = {'.xht' : '.htm', '.xhtml' : '.html' }
-    BasicFormat.__init__(self, join(destroot, self.formatDirName), extMap)
-
-  def dest(self, relpath):
-    return BasicFormat.dest(self, self.extMap.translate(relpath))
+    BasicFormat.__init__(self, join(destroot, outputDirName), extMap)
 
   def write(self, source):
     # skip nonHTML tests
@@ -117,10 +115,11 @@ class XHTMLPrintFormat(XHTMLFormat):
   """Base class for XHTML Print test suite format. Builds into 'xhtml1print'
      subfolder of root.
   """
-  formatDirName = 'xhtml1print'
 
-  def __init__(self, destroot, testSuiteName, extMap=None):
-    BasicFormat.__init__(self, join(destroot, self.formatDirName), extMap)
+  def __init__(self, destroot, testSuiteName, extMap=None, outputDirName='xhtml1print'):
+    if not extMap:
+      extMap = {'.htm' : '.xht', '.html' : '.xhtml' }
+    BasicFormat.__init__(self, join(destroot, outputDirName), extMap)
     self.testSuiteName = testSuiteName
 
   def write(self, source):

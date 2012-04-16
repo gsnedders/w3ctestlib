@@ -947,13 +947,20 @@ class HTMLSource(XMLSource):
     # Serialize
     o = html5lib.serializer.serialize(self.tree, tree='dom',
                                       format='xhtml',
-                                      emit_doctype='xhtml',
+                                      emit_doctype='html5', # XXX work around serializer bug
                                       lang_attr='html',
                                       resolve_entities=False,
                                       escape_invisible='named',
+                                      escape_rcdata=True,
                                       omit_optional_tags=False,
                                       minimize_boolean_attributes=False,
                                       quote_attr_values=True)
+    # fixup DOCTYPE
+    o = re.sub('(<!DOCTYPE html><)', '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">\n<', o)
+    # cheesy namespace support for now
+    o = re.sub('<html>', '<html xmlns="http://www.w3.org/1999/xhtml">', o)
+    o = re.sub('<svg>', '<svg xmlns="http://www.w3.org/2000/svg">', o)
+    return o
 
   def serializeHTML(self):
     self.validate()
