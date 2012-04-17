@@ -942,9 +942,31 @@ class HTMLSource(XMLSource):
       self.error = e
       self.encoding = 'utf-8'
       
+  def _injectNamespace(self, elementName, namespace, nodeList=None):
+    elements = self.tree.getElementsByTagName(elementName)
+    for element in elements:
+      if not element.hasAttribute('xmlns'):
+        if None == nodeList:
+          nodeList = []
+        element.setAttribute('xmlns', namespace)
+        nodeList.append(element)
+    return nodeList
+    
+  def injectNamespaces(self):
+    nodeList = self._injectNamespace('html', 'http://www.w3.org/1999/xhtml')
+    nodeList = self._injectNamespace('svg', 'http://www.w3.org/2000/svg', nodeList)
+    nodeList = self._injectNamespace('math', 'http://www.w3.org/1998/Math/MathML', nodeList)
+    return nodeList
+    
+  def removeNamespaces(self, nodeList):
+    if nodeList:
+      for element in nodeList:
+        element.removeAttribute('xmlns')
+    
   def serializeXHTML(self):
     self.validate()
     # Serialize
+    nodeList = self.injectNamespaces()
     o = html5lib.serializer.serialize(self.tree, tree='dom',
                                       format='xhtml',
                                       emit_doctype='html5', # XXX work around serializer bug
@@ -955,11 +977,9 @@ class HTMLSource(XMLSource):
                                       omit_optional_tags=False,
                                       minimize_boolean_attributes=False,
                                       quote_attr_values=True)
+    self.removeNamespaces(nodeList)
     # fixup DOCTYPE
     o = re.sub('(<!DOCTYPE html><)', '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">\n<', o)
-    # cheesy namespace support for now
-    o = re.sub('<html>', '<html xmlns="http://www.w3.org/1999/xhtml">', o)
-    o = re.sub('<svg>', '<svg xmlns="http://www.w3.org/2000/svg">', o)
     return o
 
   def serializeHTML(self):
