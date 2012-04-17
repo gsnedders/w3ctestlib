@@ -81,7 +81,7 @@ class XHTMLFormat(BasicFormat):
 
   def __init__(self, destroot, extMap=None, outputDirName='xhtml1'):
     if not extMap:
-      extMap = {'.htm' : '.xht', '.html' : '.xhtml' }
+      extMap = {'.htm' : '.xht', '.html' : '.xht', '.xhtml' : '.xht' }
     BasicFormat.__init__(self, destroot, extMap, outputDirName)
   def write(self, source):
     # skip HTMLonly tests
@@ -100,7 +100,7 @@ class HTMLFormat(BasicFormat):
 
   def __init__(self, destroot, extMap=None, outputDirName='html4'):
     if not extMap:
-      extMap = {'.xht' : '.htm', '.xhtml' : '.html' }
+      extMap = {'.xht' : '.htm', '.xhtml' : '.htm', '.html' : '.htm' }
     BasicFormat.__init__(self, destroot, extMap, outputDirName)
 
   def write(self, source):
@@ -121,7 +121,7 @@ class XHTMLPrintFormat(XHTMLFormat):
 
   def __init__(self, destroot, testSuiteName, extMap=None, outputDirName='xhtml1print'):
     if not extMap:
-      extMap = {'.htm' : '.xht', '.html' : '.xhtml' }
+      extMap = {'.htm' : '.xht', '.html' : '.xht', '.xhtml' : '.xht' }
     BasicFormat.__init__(self, destroot, extMap, outputDirName)
     self.testSuiteName = testSuiteName
 
