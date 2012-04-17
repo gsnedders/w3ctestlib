@@ -29,7 +29,7 @@ class BasicFormat:
      The base class implementation performs no conversions or
      format-specific location transformations."""
   formatDirName = None
-  indexExt      = '.html'
+  indexExt      = '.htm'
   convert       = True   # XXX hack to supress format conversion in support dirs, need to clean up output code to make this cleaner
 
   def __init__(self, destroot, extMap=None, outputDirName=None):

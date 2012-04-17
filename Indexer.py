@@ -57,14 +57,14 @@ class Indexer:
        `overviewTemplateNames` lists template names that should be
        processed from the template path into the main build directory.
        The '.tmpl' extension, if any, is stripped from the output filename.
-       The default value is ['index.html.tmpl', 'index.xht.tmpl', 'testinfo.data.tmpl']
+       The default value is ['index.htm.tmpl', 'index.xht.tmpl', 'testinfo.data.tmpl']
     """
     self.suite        = suite
     self.splitChapter = splitChapter
     self.extraData    = extraData
     self.overviewCopyExtPat = re.compile('.*(%s)$' % '|'.join(overviewCopyExts))
     self.overviewTmplNames = overviewTmplNames if overviewTmplNames is not None \
-      else ['index.html.tmpl', 'index.xht.tmpl', 'testinfo.data.tmpl',
+      else ['index.htm.tmpl', 'index.xht.tmpl', 'testinfo.data.tmpl',
             'implementation-report-TEMPLATE.data.tmpl']
 
     # Initialize template engine
@@ -135,7 +135,7 @@ class Indexer:
     data['specroot']     = self.suite.specroot
     data['contributors'] = self.contributors
     data['tests']        = self.alltests
-    data['extmap']       = ExtensionMap({'.xht':'', '.html':''})
+    data['extmap']       = ExtensionMap({'.xht':'', '.html':'', '.htm':''})
     data['formats']      = self.suite.formats
     data['addtests']     = addTests
 
