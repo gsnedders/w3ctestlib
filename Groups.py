@@ -172,7 +172,9 @@ class TestGroup:
       format.write(self.htaccess)
 
     # Write support files
+    format.convert = False  # XXX hack turn off format conversion
     self.support.write(format)
+    format.convert = True   # XXX undo hack
 
     # Write tests
     self.tests.write(format)

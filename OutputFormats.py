@@ -30,14 +30,16 @@ class BasicFormat:
      format-specific location transformations."""
   formatDirName = None
   indexExt      = '.html'
+  convert       = True   # XXX hack to supress format conversion in support dirs, need to clean up output code to make this cleaner
 
-  def __init__(self, destroot, extMap=None):
+  def __init__(self, destroot, extMap=None, outputDirName=None):
     """Creates format root of the output tree. `destroot` is the root path
        of the output tree.
 
        extMap provides a file extension mapping, e.g. {'.xht' : '.htm'}
     """
-    self.root = destroot
+    self.root = join(destroot, outputDirName) if outputDirName else destroot
+    self.formatDirName = outputDirName
     if not exists(self.root):
       os.makedirs(self.root)
     self.extMap = ExtensionMap(extMap or {})
@@ -52,7 +54,8 @@ class BasicFormat:
     """Returns final destination of relpath in this format and ensures that the
        parent directory exists."""
     # Translate path
-    relpath = self.extMap.translate(relpath)
+    if (self.convert):
+      relpath = self.extMap.translate(relpath)
     dest = join(self.root, self.subdir, relpath) if self.subdir \
            else join(self.root, relpath)
     # Ensure parent
@@ -79,13 +82,13 @@ class XHTMLFormat(BasicFormat):
   def __init__(self, destroot, extMap=None, outputDirName='xhtml1'):
     if not extMap:
       extMap = {'.htm' : '.xht', '.html' : '.xhtml' }
-    BasicFormat.__init__(self, join(destroot, outputDirName), extMap)
+    BasicFormat.__init__(self, destroot, extMap, outputDirName)
   def write(self, source):
     # skip HTMLonly tests
     if hasattr(source, 'hasFlag') and source.hasFlag('HTMLonly'):
       return
     source.adjustContentPaths(self)
-    if isinstance(source, HTMLSource):
+    if isinstance(source, HTMLSource) and self.convert:
       source.write(self, source.serializeXHTML())
     else:
       source.write(self)
@@ -98,14 +101,14 @@ class HTMLFormat(BasicFormat):
   def __init__(self, destroot, extMap=None, outputDirName='html4'):
     if not extMap:
       extMap = {'.xht' : '.htm', '.xhtml' : '.html' }
-    BasicFormat.__init__(self, join(destroot, outputDirName), extMap)
+    BasicFormat.__init__(self, destroot, extMap, outputDirName)
 
   def write(self, source):
     # skip nonHTML tests
     if hasattr(source, 'hasFlag') and source.hasFlag('nonHTML'):
       return
     source.adjustContentPaths(self)
-    if isinstance(source, XHTMLSource):
+    if isinstance(source, XHTMLSource) and self.convert:
       source.write(self, source.serializeHTML())
     else:
       source.write(self)
@@ -119,7 +122,7 @@ class XHTMLPrintFormat(XHTMLFormat):
   def __init__(self, destroot, testSuiteName, extMap=None, outputDirName='xhtml1print'):
     if not extMap:
       extMap = {'.htm' : '.xht', '.html' : '.xhtml' }
-    BasicFormat.__init__(self, join(destroot, outputDirName), extMap)
+    BasicFormat.__init__(self, destroot, extMap, outputDirName)
     self.testSuiteName = testSuiteName
 
   def write(self, source):

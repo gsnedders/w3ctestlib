@@ -23,7 +23,7 @@ class TestSuite:
     self.defaultReftestRelpath='reftest.list'
     self.groups = {}
     self.sourcecache = SourceCache(SourceTree(hg.repository(ui.ui(), '.')))
-    self.formats = ('html4', 'xhtml1') # FIXME, hardcoded list is lame
+    self.formats = ('html4', 'xhtml1', 'xhtml1print') # XXX FIXME, hardcoded list is lame
     self.rawgroups = {}
 
   def addTestsByExt(self, dir, ext, groupName='', groupTitle=''):
@@ -66,6 +66,9 @@ class TestSuite:
     """
     self.rawgroups[dir] = relpath
 
+  def setFormats(self, formats):
+    self.formats = formats
+    
   def buildInto(self, dest, indexer):
     """Builds test suite through all OutputFormats into directory at path `dest`
        or through OutputFormat destination `dest`, using Indexer `indexer`.
@@ -74,10 +77,16 @@ class TestSuite:
       formats = (dest,)
       dest = dest.root
     else:
-      formats = (OutputFormats.XHTMLFormat(dest),
-                 OutputFormats.HTMLFormat(dest),
-                 OutputFormats.XHTMLPrintFormat(dest, self.title),
-                )
+      formats = []
+      for format in self.formats:
+        if (format == 'html4'):
+          formats.append(OutputFormats.HTMLFormat(dest))
+        elif (format == 'html5'):
+          formats.append(OutputFormats.HTMLFormat(dest, outputDirName='html'))
+        elif (format == 'xhtml1'):
+          formats.append(OutputFormats.XHTMLFormat(dest))
+        elif (format == 'xhtml1print'):
+          formats.append(OutputFormats.XHTMLPrintFormat(dest, self.title))
 
     for group in self.groups.itervalues():
       indexer.indexGroup(group)
