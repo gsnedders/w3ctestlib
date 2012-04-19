@@ -817,7 +817,7 @@ class XMLSource(FileSource):
         # test title
         elif node.tag == xhtmlns+'title':
           title = node.text.strip() if node.text else ''
-          match = re.match('(?:[^:]*)[tT]est(?:[^:]*):(.*)', title)
+          match = re.match('(?:[^:]*)[tT]est(?:[^:]*):(.*)', title, re.DOTALL)
           if (match):
             title = match.group(1)
           self.metadata['title'] = title.strip()
