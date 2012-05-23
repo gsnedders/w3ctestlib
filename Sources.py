@@ -860,12 +860,12 @@ class XHTMLSource(XMLSource):
   def serializeXHTML(self):
     return self.serializeXML()
 
-  def serializeHTML(self):
+  def serializeHTML(self, doctype='html'):
     self.validate()
     # Serialize
     o = html5lib.serializer.serialize(self.tree, tree='lxml',
                                       format='html',
-                                      emit_doctype='html',
+                                      emit_doctype=doctype,
                                       lang_attr='html',
                                       resolve_entities=False,
                                       escape_invisible='named',
@@ -982,12 +982,12 @@ class HTMLSource(XMLSource):
     o = re.sub('(<!DOCTYPE html><)', '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">\n<', o)
     return o
 
-  def serializeHTML(self):
+  def serializeHTML(self, doctype='preserve'):
     self.validate()
     # Serialize
     o = html5lib.serializer.serialize(self.tree, tree='dom',
                                       format='html',
-                                      emit_doctype='html',
+                                      emit_doctype=doctype,
                                       lang_attr='html',
                                       resolve_entities=False,
                                       escape_invisible='named',

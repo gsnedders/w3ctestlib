@@ -112,6 +112,21 @@ class HTMLFormat(BasicFormat):
       source.write(self, source.serializeHTML())
     else:
       source.write(self)
+      
+
+class HTML5Format(HTMLFormat):
+  def __init__(self, destroot, extMap=None, outputDirName='html'):
+    HTMLFormat.__init__(self, destroot, extMap, outputDirName)
+
+  def write(self, source):
+    # skip nonHTML tests
+    if hasattr(source, 'hasFlag') and source.hasFlag('nonHTML'):
+      return
+    source.adjustContentPaths(self)
+    if isinstance(source, XHTMLSource) and self.convert:
+      source.write(self, source.serializeHTML('html'))
+    else:
+      source.write(self)
 
 
 class XHTMLPrintFormat(XHTMLFormat):

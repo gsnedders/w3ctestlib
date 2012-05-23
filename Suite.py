@@ -82,7 +82,7 @@ class TestSuite:
         if (format == 'html4'):
           formats.append(OutputFormats.HTMLFormat(dest))
         elif (format == 'html5'):
-          formats.append(OutputFormats.HTMLFormat(dest, outputDirName='html'))
+          formats.append(OutputFormats.HTML5Format(dest))
         elif (format == 'xhtml1'):
           formats.append(OutputFormats.XHTMLFormat(dest))
         elif (format == 'xhtml1print'):
