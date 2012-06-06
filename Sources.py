@@ -332,13 +332,17 @@ class FileSource:
   def adjustContentPaths(self, format):
     """Adjust any paths in file content for output format
        XXX need to account for group paths"""
-    for refType, refPath, refNode, refSource in self.refs.itervalues():
+    newRefs = dict()
+    for refName in self.refs:
+      refType, refPath, refNode, refSource = self.refs[refName]
       if refSource:
         refPath = relativeURL(format.dest(self.relpath), format.dest(refSource.relpath))
       else:
         refPath = relativeURL(format.dest(self.relpath), format.dest(refPath))
       if (refPath != refNode.get('href')):
         refNode.set('href', refPath)
+      newRefs[refName] = (refType, refPath, refNode, refSource) # update path in metadata
+    self.refs = newRefs
     
   def write(self, format):
     """Writes FileSource.data() out to `self.relpath` through Format `format`."""
@@ -368,7 +372,8 @@ class FileSource:
     """
     revision = self.revisionOf(self.sourcepath)
     for refName in self.refs:
-      refPath = self.refs[refName][1]
+      refSource = self.refs[refName][3]
+      refPath = refSource.relpath if (refSource) else self.refs[refName][1]
       refRevision = self.revisionOf(self.sourcepath, refPath) # XXX also follow reference chains
       if revision < refRevision:
         revision = refRevision
@@ -416,17 +421,17 @@ class FileSource:
     references = None
     usedRefs = {}
     usedRefs[self.name()] = '=='
-    def listReferences(source):
+    def listReferences(source, path = None):
       for refType, refPath, refNode, refSource in source.refs.values():
         refName = refSource.name() if refSource else self.sourceTree.getAssetName(join(self.sourcepath, refPath))
         if (refName not in usedRefs):
           usedRefs[refName] = refType
+          if (path):
+            refPath = os.path.normpath(os.path.join(path, refPath))
+          references.append({'type': refType, 'relpath': relativeURL(self.relpath, refPath), 'name': refName})
           if (refSource):
-            references.append({'type': refType, 'relpath': self.relativeURL(refSource)})
             if ('==' == refType): # XXX don't follow != refs for now (until we export proper ref trees)
-              listReferences(refSource)
-          else:
-            references.append({'type': refType, 'relpath': refPath, 'name': refName})
+              listReferences(refSource, basepath(refPath))
     if (self.refs):
       references = []
       listReferences(self)

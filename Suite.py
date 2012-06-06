@@ -80,21 +80,24 @@ class TestSuite:
       formats = []
       for format in self.formats:
         if (format == 'html4'):
-          formats.append(OutputFormats.HTMLFormat(dest))
+          formats.append(OutputFormats.HTMLFormat(dest, self.sourcecache.sourceTree))
         elif (format == 'html5'):
-          formats.append(OutputFormats.HTML5Format(dest))
+          formats.append(OutputFormats.HTML5Format(dest, self.sourcecache.sourceTree))
         elif (format == 'xhtml1'):
-          formats.append(OutputFormats.XHTMLFormat(dest))
+          formats.append(OutputFormats.XHTMLFormat(dest, self.sourcecache.sourceTree))
         elif (format == 'xhtml1print'):
-          formats.append(OutputFormats.XHTMLPrintFormat(dest, self.title))
+          formats.append(OutputFormats.XHTMLPrintFormat(dest, self.sourcecache.sourceTree, self.title))
+
+    for format in formats:
+      for group in self.groups.itervalues():
+        group.build(format)
 
     for group in self.groups.itervalues():
       indexer.indexGroup(group)
 
     for format in formats:
-      for group in self.groups.itervalues():
-        group.build(format)
       indexer.writeIndex(format)
+
 
     rawtests = []
     for src, relpath in self.rawgroups.items():

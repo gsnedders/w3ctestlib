@@ -5,8 +5,8 @@
 
 import re
 import os
-from os.path import join, exists, splitext, dirname
-from Sources import XHTMLSource, HTMLSource
+from os.path import join, exists, splitext, dirname, basename
+from Sources import XHTMLSource, HTMLSource, SourceTree
 
 class ExtensionMap:
   """ Given a file extension mapping (e.g. {'.xht' : '.htm'}), provides
@@ -32,13 +32,14 @@ class BasicFormat:
   indexExt      = '.htm'
   convert       = True   # XXX hack to supress format conversion in support dirs, need to clean up output code to make this cleaner
 
-  def __init__(self, destroot, extMap=None, outputDirName=None):
+  def __init__(self, destroot, sourceTree, extMap=None, outputDirName=None):
     """Creates format root of the output tree. `destroot` is the root path
        of the output tree.
 
        extMap provides a file extension mapping, e.g. {'.xht' : '.htm'}
     """
     self.root = join(destroot, outputDirName) if outputDirName else destroot
+    self.sourceTree = sourceTree
     self.formatDirName = outputDirName
     if not exists(self.root):
       os.makedirs(self.root)
@@ -56,6 +57,9 @@ class BasicFormat:
     # Translate path
     if (self.convert):
       relpath = self.extMap.translate(relpath)
+    if (self.sourceTree.isReference(relpath)):
+      relpath = join('reference', basename(relpath))
+    # XXX when forcing support files into support path, need to account for support/support
     dest = join(self.root, self.subdir, relpath) if self.subdir \
            else join(self.root, relpath)
     # Ensure parent
@@ -79,10 +83,10 @@ class XHTMLFormat(BasicFormat):
   """
   indexExt      = '.xht'
 
-  def __init__(self, destroot, extMap=None, outputDirName='xhtml1'):
+  def __init__(self, destroot, sourceTree, extMap=None, outputDirName='xhtml1'):
     if not extMap:
       extMap = {'.htm' : '.xht', '.html' : '.xht', '.xhtml' : '.xht' }
-    BasicFormat.__init__(self, destroot, extMap, outputDirName)
+    BasicFormat.__init__(self, destroot, sourceTree, extMap, outputDirName)
   def write(self, source):
     # skip HTMLonly tests
     if hasattr(source, 'hasFlag') and source.hasFlag('HTMLonly'):
@@ -98,10 +102,10 @@ class HTMLFormat(BasicFormat):
      of root.
   """
 
-  def __init__(self, destroot, extMap=None, outputDirName='html4'):
+  def __init__(self, destroot, sourceTree, extMap=None, outputDirName='html4'):
     if not extMap:
       extMap = {'.xht' : '.htm', '.xhtml' : '.htm', '.html' : '.htm' }
-    BasicFormat.__init__(self, destroot, extMap, outputDirName)
+    BasicFormat.__init__(self, destroot, sourceTree, extMap, outputDirName)
 
   def write(self, source):
     # skip nonHTML tests
@@ -115,8 +119,8 @@ class HTMLFormat(BasicFormat):
       
 
 class HTML5Format(HTMLFormat):
-  def __init__(self, destroot, extMap=None, outputDirName='html'):
-    HTMLFormat.__init__(self, destroot, extMap, outputDirName)
+  def __init__(self, destroot, sourceTree, extMap=None, outputDirName='html'):
+    HTMLFormat.__init__(self, destroot, sourceTree, extMap, outputDirName)
 
   def write(self, source):
     # skip nonHTML tests
@@ -134,10 +138,10 @@ class XHTMLPrintFormat(XHTMLFormat):
      subfolder of root.
   """
 
-  def __init__(self, destroot, testSuiteName, extMap=None, outputDirName='xhtml1print'):
+  def __init__(self, destroot, sourceTree, testSuiteName, extMap=None, outputDirName='xhtml1print'):
     if not extMap:
       extMap = {'.htm' : '.xht', '.html' : '.xht', '.xhtml' : '.xht' }
-    BasicFormat.__init__(self, destroot, extMap, outputDirName)
+    BasicFormat.__init__(self, destroot, sourceTree, extMap, outputDirName)
     self.testSuiteName = testSuiteName
 
   def write(self, source):
