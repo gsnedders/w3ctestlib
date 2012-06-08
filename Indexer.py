@@ -135,7 +135,7 @@ class Indexer:
     data['specroot']     = self.suite.specroot
     data['contributors'] = self.contributors
     data['tests']        = self.alltests
-    data['extmap']       = ExtensionMap({'.xht':'', '.html':'', '.htm':''})
+    data['extmap']       = ExtensionMap({'.xht':'', '.html':'', '.htm':'', '.svg':''})
     data['formats']      = self.suite.formats
     data['addtests']     = addTests
 

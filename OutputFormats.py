@@ -6,7 +6,7 @@
 import re
 import os
 from os.path import join, exists, splitext, dirname, basename
-from Sources import XHTMLSource, HTMLSource, SourceTree
+from Sources import XHTMLSource, HTMLSource, SVGSource, SourceTree
 
 class ExtensionMap:
   """ Given a file extension mapping (e.g. {'.xht' : '.htm'}), provides
@@ -87,6 +87,7 @@ class XHTMLFormat(BasicFormat):
     if not extMap:
       extMap = {'.htm' : '.xht', '.html' : '.xht', '.xhtml' : '.xht' }
     BasicFormat.__init__(self, destroot, sourceTree, extMap, outputDirName)
+
   def write(self, source):
     # skip HTMLonly tests
     if hasattr(source, 'hasFlag') and source.hasFlag('HTMLonly'):
@@ -130,6 +131,18 @@ class HTML5Format(HTMLFormat):
     if isinstance(source, XHTMLSource) and self.convert:
       source.write(self, source.serializeHTML('html'))
     else:
+      source.write(self)
+
+
+class SVGFormat(BasicFormat):
+  def __init__(self, destroot, sourceTree, extMap=None, outputDirName='svg'):
+    if not extMap:
+      extMap = {'.svg' : '.svg' }
+    BasicFormat.__init__(self, destroot, sourceTree, extMap, outputDirName)
+
+  def write(self, source):
+    # skip non SVG tests
+    if isinstance(source, SVGSource):
       source.write(self)
 
 

@@ -23,7 +23,7 @@ class SourceTree(object):
   """
 
   def __init__(self, repository):
-    self.mTestExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml']
+    self.mTestExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml', '.svg']
     self.mReferenceExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml', '.png', '.svg']
     self.mRepository = repository
   
@@ -151,7 +151,9 @@ class SourceCache:
       source = XHTMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
     elif (mime == 'text/html'):
       source = HTMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
-    elif ((mime == 'application/xml') or (mime == 'image/svg+xml')):
+    elif (mime == 'image/svg+xml'):
+      source = SVGSource(self.sourceTree, sourcepath, relpath, changeCtx)
+    elif (mime == 'application/xml'):
       source = XMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
     else:
       source = FileSource(self.sourceTree, sourcepath, relpath, mime, changeCtx)
@@ -610,6 +612,7 @@ class ReftestManifest(ConfigSource):
 
 import Utils # set up XML catalog
 xhtmlns = '{http://www.w3.org/1999/xhtml}'
+svgns = '{http://www.w3.org/2000/svg}'
 
 class XMLSource(FileSource):
   """FileSource object with support reading XML trees."""
@@ -675,17 +678,20 @@ class XMLSource(FileSource):
     if self.tree is None:
       self.parse()
 
-  def injectHeadLink(self, rel, href, tagCode = None):
-    """Inject (prepend) <link> with data given in inside head. 
+  def getMeatdataContainer(self):
+    return self.tree.getroot().find(xhtmlns+'head')
+    
+  def injectMetadataLink(self, rel, href, tagCode = None):
+    """Inject (prepend) <link> with data given inside metadata container. 
        Injected element is tagged with `tagCode`, which can be
        used to clear it with clearInjectedTags later.
     """
     self.validate()
-    head = self.tree.getroot().find(xhtmlns+'head')
-    if (head):
-      node = etree.Element('link', {'rel': rel, 'href': href})
-      node.tail = head.text
-      head.insert(0, node)
+    container = self.getMeatdataContainer()
+    if (container):
+      node = etree.Element(xhtmlns+'link', {'rel': rel, 'href': href})
+      node.tail = container.text
+      container.insert(0, node)
       self.injectedTags[node] = tagCode or True
       return node
     return None
@@ -728,14 +734,12 @@ class XMLSource(FileSource):
   def compact(self):
     self.tree = None
 
-
-  def getHeadElements(self, tree):
-    head = tree.getroot().find(xhtmlns+'head')
-    if (None != head):
-      return [node for node in head]
+  def getMetadataElements(self, tree):
+    container = self.getMeatdataContainer()
+    if (None != container):
+      return [node for node in container]
     return None
-  
-  
+
   def extractMetadata(self, tree):
     """Extract metadata from tree."""
     links = []; credits = []; reviewers = []; flags = []; asserts = [];
@@ -752,11 +756,11 @@ class XMLSource(FileSource):
       return bool(re.search('(^|\s+)%s($|\s+)' % token, string))
 
     readFlags = False
-    head = self.getHeadElements(tree)
+    metaElements = self.getMetadataElements(tree)
     try:
-      if (head == None): raise SourceMetaError("Missing <head> element")
+      if (metaElements == None): raise SourceMetaError("Missing <head> element")
       # Scan and cache metadata
-      for node in head:
+      for node in metaElements:
         if (node.tag == xhtmlns+'link'):
           # help links
           if tokenMatch('help', node.get('rel')):
@@ -839,13 +843,13 @@ class XMLSource(FileSource):
      """
      self.validate()
      if next:
-       next = self.injectHeadLink('next', self.relativeURL(next), 'next')
+       next = self.injectMetadataLink('next', self.relativeURL(next), 'next')
      if prev:
-       prev = self.injectHeadLink('prev', self.relativeURL(prev), 'prev')
+       prev = self.injectMetadataLink('prev', self.relativeURL(prev), 'prev')
      if reference:
-       reference = self.injectHeadLink('match', self.relativeURL(reference), 'ref')
+       reference = self.injectMetadataLink('match', self.relativeURL(reference), 'ref')
      if notReference:
-       notReference = self.injectHeadLink('mismatch', self.relativeURL(notReference), 'not-ref')
+       notReference = self.injectMetadataLink('mismatch', self.relativeURL(notReference), 'not-ref')
      NodeTuple = collections.namedtuple('NodeTuple', ['next', 'prev', 'reference', 'notReference'])
      return NodeTuple(next, prev, reference, notReference)
 
@@ -885,6 +889,126 @@ class XHTMLSource(XMLSource):
     return o
 
 
+class SVGSource(XMLSource):
+  """FileSource object with support for extracting metadata from SVG."""
+  
+  def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
+    """Initialize SVGSource by loading from SVG file `sourcepath`.
+      Parse errors are reported as caught exceptions in `self.error`,
+      and the source is replaced with an XHTML error message.
+    """
+    XMLSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
+
+  def getMeatdataContainer(self):
+    groups = self.tree.getroot().findall(svgns+'g')
+    for group in groups:
+      if ('testmeta' == group.get('id')):
+        return group
+    return None
+
+  def extractMetadata(self, tree):
+    """Extract metadata from tree."""
+    links = []; credits = []; reviewers = []; flags = []; asserts = [];
+    self.metadata = {'asserts'   : asserts,
+                     'credits'   : credits,
+                     'reviewers' : reviewers,
+                     'flags'     : flags,
+                     'links'     : links,
+                     'title'     : ''
+                    }
+
+    def tokenMatch(token, string):
+      if not string: return False
+      return bool(re.search('(^|\s+)%s($|\s+)' % token, string))
+
+    readFlags = False
+    metaElements = self.getMetadataElements(tree)
+    try:
+      if (metaElements == None): raise SourceMetaError("Missing <g id='testmeta'> element")
+      # Scan and cache metadata
+      for node in metaElements:
+        if (node.tag == xhtmlns+'link'):
+          # help links
+          if tokenMatch('help', node.get('rel')):
+            link = node.get('href').strip()
+            if not link:
+              raise SourceMetaError("Help link missing href value.")
+            if not link.startswith('http://') or link.startswith('https://'):
+              raise SourceMetaError("Help link must be absolute URL.")
+            if link.find('propdef') == -1:    # XXX Remove this
+              links.append(link)
+          # == references
+          elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
+            refPath = node.get('href').strip()
+            if not refPath:
+              raise SourceMetaError("Reference link missing href value.")
+            refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
+            if (refName in self.refs):
+              raise SourceMetaError("Reference already specified.")
+            self.refs[refName] = ('==', refPath, node, None)
+          # != references
+          elif tokenMatch('mismatch', node.get('rel')) or tokenMatch('not-reference', node.get('rel')):
+            refPath = node.get('href').strip()
+            if not refPath:
+              raise SourceMetaError("Reference link missing href value.")
+            refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
+            if (refName in self.refs):
+              raise SourceMetaError("Reference already specified.")
+            self.refs[refName] = ('!=', refPath, node, None)
+          else: # may have both author and reviewer in the same link
+            # credits
+            if tokenMatch('author', node.get('rel')):
+              name = node.get('title')
+              name = name.strip() if name else name
+              if not name:
+                raise SourceMetaError("Author link missing name (title attribute).")
+              link = node.get('href').strip()
+              if not link:
+                raise SourceMetaError("Author link missing contact URL (http or mailto).")
+              credits.append((name, link))
+            # reviewers
+            if tokenMatch('reviewer', node.get('rel')):
+              name = node.get('title')
+              name = name.strip() if name else name
+              if not name:
+                raise SourceMetaError("Reviewer link missing name (title attribute).")
+              link = node.get('href').strip()
+              if not link:
+                raise SourceMetaError("Reviewer link missing contact URL (http or mailto).")
+              reviewers.append((name, link))
+        elif node.tag == svgns+'metadata':
+          metatype = node.get('class')
+          metatype = metatype.strip() if metatype else metatype
+          # requirement flags
+          if metatype == 'flags':
+            if readFlags:
+              raise SourceMetaError("Flags must only be specified once.")
+            readFlags = True
+            text = node.find(svgns+'text')
+            flagString = text.text if (text) else node.text
+            if (flagString):
+              for flag in sorted(flagString.split()):
+                flags.append(flag)
+        elif node.tag == svgns+'desc':
+          metatype = node.get('class')
+          metatype = metatype.strip() if metatype else metatype
+          # test assertions
+          if metatype == 'assert':
+            asserts.append(node.text.strip().replace('\t', ' '))
+        # test title
+        elif node.tag == svgns+'title':
+          title = node.text.strip() if node.text else ''
+          match = re.match('(?:[^:]*)[tT]est(?:[^:]*):(.*)', title, re.DOTALL)
+          if (match):
+            title = match.group(1)
+          self.metadata['title'] = title.strip()
+
+    # Cache error and return
+    except SourceMetaError, e:
+      e.W3CTestLibErrorLocation = self.sourcepath
+      self.error = e
+
+
 class NodeWrapper(object):
   """Wrapper object for dom nodes to give them an etree-like api
   """
@@ -920,7 +1044,7 @@ class HTMLSource(XMLSource):
   # Private Data and Methods
   __parser = html5lib.HTMLParser(tree = treebuilders.getTreeBuilder('dom')) 
     # XXX it would be great to use lxml etree, but it chokes on some of our tests...
-    # if that would work, the NodeWrapper and injectHeadLink below could be removed
+    # if that would work, the NodeWrapper and injectMetadataLink below could be removed
 
   # Public Methods
 
@@ -947,26 +1071,54 @@ class HTMLSource(XMLSource):
       self.error = e
       self.encoding = 'utf-8'
       
-  def _injectNamespace(self, elementName, namespace, nodeList=None):
+  def _injectXLinks(self, element, nodeList):
+    injected = False
+
+    xlinkAttrs = ['href', 'type', 'role', 'arcrole', 'title', 'show', 'actuate']
+    if (element.hasAttribute('href')):
+      for attr in xlinkAttrs:
+        if (element.hasAttribute(attr)):
+          injected = True
+          value = element.getAttribute(attr)
+          element.removeAttribute(attr)
+          element.setAttribute('xlink:' + attr, value)
+          nodeList.append((element, 'xlink:' + attr, attr))
+
+    childNode = element.firstChild
+    while (childNode):
+      if ((dom.Node.ELEMENT_NODE == childNode.nodeType) and ('foreignobject' != childNode.tagName.lower())):
+        injected |= self._injectXLinks(childNode, nodeList)
+      childNode = childNode.nextSibling
+    return injected
+    
+  def _injectNamespace(self, elementName, prefix, namespace, doXLinks, nodeList):
+    attr = 'xmlns:' + prefix if (prefix) else 'xmlns'
     elements = self.tree.getElementsByTagName(elementName)
     for element in elements:
-      if not element.hasAttribute('xmlns'):
-        if None == nodeList:
-          nodeList = []
-        element.setAttribute('xmlns', namespace)
-        nodeList.append(element)
-    return nodeList
+      if not element.hasAttribute(attr):
+        element.setAttribute(attr, namespace)
+        nodeList.append((element, attr, None))
+        if (doXLinks):
+          if (self._injectXLinks(element, nodeList)):
+            element.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink')
+            nodeList.append((element, 'xmlns:xlink', None))
     
   def injectNamespaces(self):
-    nodeList = self._injectNamespace('html', 'http://www.w3.org/1999/xhtml')
-    nodeList = self._injectNamespace('svg', 'http://www.w3.org/2000/svg', nodeList)
-    nodeList = self._injectNamespace('math', 'http://www.w3.org/1998/Math/MathML', nodeList)
+    nodeList = []
+    self._injectNamespace('html', None, 'http://www.w3.org/1999/xhtml', False, nodeList)
+    self._injectNamespace('svg', None, 'http://www.w3.org/2000/svg', True, nodeList)
+    self._injectNamespace('math', None, 'http://www.w3.org/1998/Math/MathML', True, nodeList)
     return nodeList
     
   def removeNamespaces(self, nodeList):
     if nodeList:
-      for element in nodeList:
-        element.removeAttribute('xmlns')
+      for element, attr, oldAttr in nodeList:
+        if (oldAttr):
+          value = element.getAttribute(attr)
+          element.removeAttribute(attr)
+          element.setAttribute(oldAttr, value)
+        else:
+          element.removeAttribute(attr)
     
   def serializeXHTML(self):
     self.validate()
@@ -1016,7 +1168,7 @@ class HTMLSource(XMLSource):
       return FileSource.unicode(self)
     return self.serializeHTML()
     
-  def injectHeadLink(self, rel, href, tagCode = None):
+  def injectMetadataLink(self, rel, href, tagCode = None):
     """Inject (prepend) <link> data given in head. 
        Injected element is tagged with `tagCode`, which can be
        used to clear it with clearInjectedTags later.
@@ -1032,7 +1184,7 @@ class HTMLSource(XMLSource):
     self.injectedTags[node] = tagCode or True
     return node
 
-  def getHeadElements(self, tree):
+  def getMetadataElements(self, tree):
     head = self.tree.getElementsByTagName('head').item(0)
     if (None != head):
       elements = []

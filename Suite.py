@@ -87,6 +87,8 @@ class TestSuite:
           formats.append(OutputFormats.XHTMLFormat(dest, self.sourcecache.sourceTree))
         elif (format == 'xhtml1print'):
           formats.append(OutputFormats.XHTMLPrintFormat(dest, self.sourcecache.sourceTree, self.title))
+        elif (format == 'svg'):
+          formats.append(OutputFormats.SVGFormat(dest, self.sourcecache.sourceTree))
 
     for format in formats:
       for group in self.groups.itervalues():
