@@ -85,9 +85,10 @@ class SourceTree(object):
       
   def _isReference(self, pathList, fileName):
     if (not self._isSupportPath(pathList)):
-      fileExt = os.path.splitext(fileName)[1]
-      if (('-ref' in fileName) or fileName.startswith('ref-') or
-           ('-notref' in fileName) or fileName.startswith('notref-')):
+      baseName, fileExt = os.path.splitext(fileName)[:2]
+      if (bool(re.search('(^ref-|^notref-).+', baseName)) or 
+          bool(re.search('.+(-ref[0-9]*$|-notref[0-9]*$)', baseName)) or 
+          ('-ref-' in baseName) or ('-notref-' in baseName)):
         return (fileExt in self.mReferenceExtensions)
       if (self._isReferencePath(pathList)):
         return (fileExt in self.mReferenceExtensions)
