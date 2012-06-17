@@ -765,7 +765,7 @@ class XMLSource(FileSource):
         if (node.tag == xhtmlns+'link'):
           # help links
           if tokenMatch('help', node.get('rel')):
-            link = node.get('href').strip()
+            link = node.get('href').strip() if node.get('href') else None
             if not link:
               raise SourceMetaError("Help link missing href value.")
             if not link.startswith('http://') or link.startswith('https://'):
@@ -774,7 +774,7 @@ class XMLSource(FileSource):
               links.append(link)
           # == references
           elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
-            refPath = node.get('href').strip()
+            refPath = node.get('href').strip() if node.get('href') else None
             if not refPath:
               raise SourceMetaError("Reference link missing href value.")
             refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
@@ -783,7 +783,7 @@ class XMLSource(FileSource):
             self.refs[refName] = ('==', refPath, node, None)
           # != references
           elif tokenMatch('mismatch', node.get('rel')) or tokenMatch('not-reference', node.get('rel')):
-            refPath = node.get('href').strip()
+            refPath = node.get('href').strip() if node.get('href') else None
             if not refPath:
               raise SourceMetaError("Reference link missing href value.")
             refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
@@ -797,7 +797,7 @@ class XMLSource(FileSource):
               name = name.strip() if name else name
               if not name:
                 raise SourceMetaError("Author link missing name (title attribute).")
-              link = node.get('href').strip()
+              link = node.get('href').strip() if node.get('href') else None
               if not link:
                 raise SourceMetaError("Author link missing contact URL (http or mailto).")
               credits.append((name, link))
@@ -807,7 +807,7 @@ class XMLSource(FileSource):
               name = name.strip() if name else name
               if not name:
                 raise SourceMetaError("Reviewer link missing name (title attribute).")
-              link = node.get('href').strip()
+              link = node.get('href').strip() if node.get('href') else None
               if not link:
                 raise SourceMetaError("Reviewer link missing contact URL (http or mailto).")
               reviewers.append((name, link))
@@ -823,7 +823,8 @@ class XMLSource(FileSource):
               flags.append(flag)
           # test assertions
           elif metatype == 'assert':
-            asserts.append(node.get('content').strip().replace('\t', ' '))
+            if (node.get('content')):
+              asserts.append(node.get('content').strip().replace('\t', ' '))
         # test title
         elif node.tag == xhtmlns+'title':
           title = node.text.strip() if node.text else ''
@@ -931,7 +932,7 @@ class SVGSource(XMLSource):
         if (node.tag == xhtmlns+'link'):
           # help links
           if tokenMatch('help', node.get('rel')):
-            link = node.get('href').strip()
+            link = node.get('href').strip() if node.get('href') else None
             if not link:
               raise SourceMetaError("Help link missing href value.")
             if not link.startswith('http://') or link.startswith('https://'):
@@ -940,7 +941,7 @@ class SVGSource(XMLSource):
               links.append(link)
           # == references
           elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
-            refPath = node.get('href').strip()
+            refPath = node.get('href').strip() if node.get('href') else None
             if not refPath:
               raise SourceMetaError("Reference link missing href value.")
             refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
@@ -949,7 +950,7 @@ class SVGSource(XMLSource):
             self.refs[refName] = ('==', refPath, node, None)
           # != references
           elif tokenMatch('mismatch', node.get('rel')) or tokenMatch('not-reference', node.get('rel')):
-            refPath = node.get('href').strip()
+            refPath = node.get('href').strip() if node.get('href') else None
             if not refPath:
               raise SourceMetaError("Reference link missing href value.")
             refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
@@ -963,7 +964,7 @@ class SVGSource(XMLSource):
               name = name.strip() if name else name
               if not name:
                 raise SourceMetaError("Author link missing name (title attribute).")
-              link = node.get('href').strip()
+              link = node.get('href').strip() if node.get('href') else None
               if not link:
                 raise SourceMetaError("Author link missing contact URL (http or mailto).")
               credits.append((name, link))
@@ -973,7 +974,7 @@ class SVGSource(XMLSource):
               name = name.strip() if name else name
               if not name:
                 raise SourceMetaError("Reviewer link missing name (title attribute).")
-              link = node.get('href').strip()
+              link = node.get('href').strip() if node.get('href') else None
               if not link:
                 raise SourceMetaError("Reviewer link missing contact URL (http or mailto).")
               reviewers.append((name, link))
