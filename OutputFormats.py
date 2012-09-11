@@ -51,6 +51,9 @@ class BasicFormat:
     """
     self.subdir = name
 
+  def destDir(self):
+    return join(self.root, self.subdir) if self.subdir else self.root
+    
   def dest(self, relpath):
     """Returns final destination of relpath in this format and ensures that the
        parent directory exists."""

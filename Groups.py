@@ -184,5 +184,12 @@ class TestGroup:
     if self.manifest:
       format.write(self.manifest)
 
+    # copy support files to reference directory (XXX temp until proper support path fixup)
+    formatDir = format.destDir()
+    supportDir = join(formatDir, 'support')
+    referenceDir = join(formatDir, 'reference')
+    if exists(supportDir) and exists(referenceDir):
+      shutil.copytree(supportDir, join(referenceDir, 'support'))
+
     format.setSubDir()
 
