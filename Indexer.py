@@ -12,10 +12,11 @@ def list_contains(l, x):
 import sys
 import re
 import os
+import codecs
 from os.path import join, exists, abspath
 from template import Template
 import w3ctestlib
-from Utils import listfiles
+from Utils import listfiles, escapeToNamedASCII
 from OutputFormats import ExtensionMap
 import shutil
 
@@ -81,9 +82,11 @@ class Indexer:
 
     # Load toc data
     self.sections = {}
-    for record in open(tocDataPath):
+    for record in codecs.open(tocDataPath, 'r', 'utf-8'):
       uri, numstr, title = record.split('\t')
-      uri = intern(uri)
+      uri = intern(uri.encode('ascii'))
+      numstr = escapeToNamedASCII(numstr)
+      title = escapeToNamedASCII(title)
       self.sections[uri] = Section(uri, title, numstr)
 
     # Initialize storage
