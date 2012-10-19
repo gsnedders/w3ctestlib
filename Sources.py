@@ -819,12 +819,15 @@ class XMLSource(FileSource):
             if readFlags:
               raise SourceMetaError("Flags must only be specified once.")
             readFlags = True
+            if (None == node.get('content')):
+              raise SourceMetaError("Flags meta missing content attribute.")
             for flag in sorted(node.get('content').split()):
               flags.append(flag)
           # test assertions
           elif metatype == 'assert':
-            if (node.get('content')):
-              asserts.append(node.get('content').strip().replace('\t', ' '))
+            if (None == node.get('content')):
+              raise SourceMetaError("Assert meta missing content attribute.")
+            asserts.append(node.get('content').strip().replace('\t', ' '))
         # test title
         elif node.tag == xhtmlns+'title':
           title = node.text.strip() if node.text else ''
