@@ -661,14 +661,20 @@ class XMLSource(FileSource):
     """Parse file and store any parse errors in self.error"""
     self.error = False
     try:
-      self.tree = etree.parse(StringReader(self.data()), parser=self.__parser)
-      self.encoding = self.tree.docinfo.encoding or 'utf-8'
-      self.injectedTags = {}
+      data = self.data()
+      if (data):
+        self.tree = etree.parse(StringReader(data), parser=self.__parser)
+        self.encoding = self.tree.docinfo.encoding or 'utf-8'
+        self.injectedTags = {}
+      else:
+        self.tree = None
+        self.error = 'Empty source file'
+        self.encoding = 'utf-8'
 
       FileSource.loadMetadata(self)
       if ((not self.metadata) and self.tree and (not self.error)):
         self.extractMetadata(self.tree)
-    except etree.ParseError, e:
+    except etree.ParseError as e:
       self.cacheAsParseError(self.sourcepath, e)
       e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
@@ -837,7 +843,7 @@ class XMLSource(FileSource):
           self.metadata['title'] = title.strip()
 
     # Cache error and return
-    except SourceMetaError, e:
+    except SourceMetaError as e:
       e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
 
@@ -1009,7 +1015,7 @@ class SVGSource(XMLSource):
           self.metadata['title'] = title.strip()
 
     # Cache error and return
-    except SourceMetaError, e:
+    except SourceMetaError as e:
       e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
 
@@ -1063,15 +1069,20 @@ class HTMLSource(XMLSource):
     self.error = False
     try:
       data = self.data()
-      htmlStream = html5lib.inputstream.HTMLInputStream(StringReader(data))
-      self.encoding = htmlStream.detectEncoding()[0]
-      self.tree = self.__parser.parse(StringReader(data), encoding = self.encoding)
-      self.injectedTags = {}
+      if data:
+        htmlStream = html5lib.inputstream.HTMLInputStream(StringReader(data))
+        self.encoding = htmlStream.detectEncoding()[0]
+        self.tree = self.__parser.parse(StringReader(data), encoding = self.encoding)
+        self.injectedTags = {}
+      else:
+        self.tree = None
+        self.error = 'Empty source file'
+        self.encoding = 'utf-8'
 
       FileSource.loadMetadata(self)
       if ((not self.metadata) and self.tree and (not self.error)):
         self.extractMetadata(self.tree)
-    except etree.ParseError, e:
+    except Exception as e:
       e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
       self.encoding = 'utf-8'
