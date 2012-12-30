@@ -103,13 +103,13 @@ class TestGroup:
     for test in self.tests.iter():
       if (test.isReftest()):
         usedRefs = {}
-        usedRefs[test.name()] = '=='
+        usedRefs[test.sourcepath] = '=='
         def loadReferences(source): # XXX need to verify refType for mutual exclusion (ie: a == b != a)
           for refSrcPath, refRelPath, refType in source.getReferencePaths():
             ref = sourceCache.generateSource(refSrcPath, refRelPath)
             source.addReference(ref)
-            if (ref.name() not in usedRefs):
-              usedRefs[ref.name()] = refType
+            if (refSrcPath not in usedRefs):
+              usedRefs[refSrcPath] = refType
               if (ref not in self.tests):
                 self.refs.addSource(ref)
               loadReferences(ref)
@@ -177,6 +177,7 @@ class TestGroup:
     format.convert = True   # XXX undo hack
 
     # Write tests
+    self.tests.adjustContentPaths(format)
     self.tests.write(format)
 
     # Write refs

@@ -234,6 +234,10 @@ class SourceSet:
       self.addSource(source)
     return self
 
+  def adjustContentPaths(self, format):
+    for source in self.pathMap.itervalues():
+      source.adjustContentPaths(format)
+  
   def write(self, format):
     """Write files out through OutputFormat `format`.
     """
@@ -335,17 +339,25 @@ class FileSource:
   def adjustContentPaths(self, format):
     """Adjust any paths in file content for output format
        XXX need to account for group paths"""
-    newRefs = dict()
-    for refName in self.refs:
-      refType, refPath, refNode, refSource = self.refs[refName]
-      if refSource:
-        refPath = relativeURL(format.dest(self.relpath), format.dest(refSource.relpath))
-      else:
-        refPath = relativeURL(format.dest(self.relpath), format.dest(refPath))
-      if (refPath != refNode.get('href')):
-        refNode.set('href', refPath)
-      newRefs[refName] = (refType, refPath, refNode, refSource) # update path in metadata
-    self.refs = newRefs
+    if (self.refs):
+      seenRefs = {}
+      seenRefs[self.sourcepath] = '=='
+      def adjustReferences(source):
+        newRefs = dict()
+        for refName in source.refs:
+          refType, refPath, refNode, refSource = source.refs[refName]
+          if refSource:
+            refPath = relativeURL(format.dest(self.relpath), format.dest(refSource.relpath))
+            if (refSource.sourcepath not in seenRefs):
+              seenRefs[refSource.sourcepath] = refType
+              adjustReferences(refSource)
+          else:
+            refPath = relativeURL(format.dest(self.relpath), format.dest(refPath))
+          if (refPath != refNode.get('href')):
+            refNode.set('href', refPath)
+          newRefs[refName] = (refType, refPath, refNode, refSource) # update path in metadata
+        source.refs = newRefs
+      adjustReferences(self)
     
   def write(self, format):
     """Writes FileSource.data() out to `self.relpath` through Format `format`."""
@@ -423,18 +435,24 @@ class FileSource:
 
     references = None
     usedRefs = {}
-    usedRefs[self.name()] = '=='
-    def listReferences(source, path = None):
-      for refType, refPath, refNode, refSource in source.refs.values():
-        refName = refSource.name() if refSource else self.sourceTree.getAssetName(join(self.sourcepath, refPath))
-        if (refName not in usedRefs):
-          usedRefs[refName] = refType
-          if (path):
-            refPath = os.path.normpath(os.path.join(path, refPath))
-          references.append({'type': refType, 'relpath': relativeURL(self.relpath, refPath), 'name': refName})
+    usedRefs[self.sourcepath] = '=='
+    def listReferences(source):
+      for refType, refRelPath, refNode, refSource in source.refs.values():
+        if (refSource):
+          refSourcePath = refSource.sourcepath
+        else:
+          refSourcePath = os.path.normpath(join(basepath(source.sourcepath), refRelPath))
+        if (refSourcePath not in usedRefs):
+          usedRefs[refSourcePath] = refType
           if (refSource):
+            references.append({'type': refType, 'relpath': refRelPath,
+                               'name': self.sourceTree.getAssetName(refSourcePath)})
             if ('==' == refType): # XXX don't follow != refs for now (until we export proper ref trees)
-              listReferences(refSource, basepath(refPath))
+              listReferences(refSource)
+          else:
+            references.append({'type': refType, 'relpath': relativeURL(self.sourcepath, refSourcePath),
+                               'name': self.sourceTree.getAssetName(refSourcePath)})
+  
     if (self.refs):
       references = []
       listReferences(self)
@@ -538,6 +556,9 @@ class ConfigSource(FileSource):
       data += '\n'
     return data
     
+  def getMetadata(self, asUnicode = False):
+    return None
+
   def append(self, other):
     """Appends contents of ConfigSource `other` to this source.
        Asserts if self.relpath != other.relpath.
