@@ -445,12 +445,13 @@ class FileSource:
         if (refSourcePath not in usedRefs):
           usedRefs[refSourcePath] = refType
           if (refSource):
-            references.append({'type': refType, 'relpath': refRelPath,
+            references.append({'type': refType, 'relpath': refRelPath, 'repopath': refSourcePath,
                                'name': self.sourceTree.getAssetName(refSourcePath)})
             if ('==' == refType): # XXX don't follow != refs for now (until we export proper ref trees)
               listReferences(refSource)
           else:
             references.append({'type': refType, 'relpath': relativeURL(self.sourcepath, refSourcePath),
+                               'repopath': refSourcePath,
                                'name': self.sourceTree.getAssetName(refSourcePath)})
   
     if (self.refs):
