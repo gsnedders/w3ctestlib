@@ -1091,7 +1091,8 @@ class HTMLSource(XMLSource):
       data = self.data()
       if data:
         htmlStream = html5lib.inputstream.HTMLInputStream(StringReader(data))
-        self.encoding = htmlStream.detectEncoding()[0]
+        if ('utf-8-sig' != self.encoding):  # if we found a BOM, respect it
+          self.encoding = htmlStream.detectEncoding()[0]
         self.tree = self.__parser.parse(StringReader(data), encoding = self.encoding)
         self.injectedTags = {}
       else:
