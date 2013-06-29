@@ -796,7 +796,7 @@ class XMLSource(FileSource):
             link = node.get('href').strip() if node.get('href') else None
             if not link:
               raise SourceMetaError("Help link missing href value.")
-            if not link.startswith('http://') or link.startswith('https://'):
+            if not (link.startswith('http://') or link.startswith('https://')):
               raise SourceMetaError("Help link must be absolute URL.")
             links.append(link)
           # == references
@@ -965,7 +965,7 @@ class SVGSource(XMLSource):
             link = node.get('href').strip() if node.get('href') else None
             if not link:
               raise SourceMetaError("Help link missing href value.")
-            if not link.startswith('http://') or link.startswith('https://'):
+            if not (link.startswith('http://') or link.startswith('https://')):
               raise SourceMetaError("Help link must be absolute URL.")
             links.append(link)
           # == references
