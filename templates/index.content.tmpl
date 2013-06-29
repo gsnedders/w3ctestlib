@@ -1,11 +1,21 @@
 [% PROCESS "suitedata.tmpl" %]
 [% IF official %]
   <h1>[% suites.$suite.title %] Conformance Test Suite</h1>
+  <dt>Test Coordinator:</dt>
+   	<dd>[% suites.$suite.owner %]</dd>
+  
   <p>This is a <strong>[% statusNames.${suites.$suite.status}.title or "ERROR: $suite" %]</strong>
      version of the [% suites.$suite.title %] Test Suite.</p>
 [% ELSE %]
   <h1>[% suites.$suite.title %] Test Collection</h1>
 [% END %]
+
+[% IF suites.$suite.harness != '' %]
+   <p>You can provide test data or review the testing results for this test suite:</p>
+   <dt><a href="http://test.csswg.org/harness/suite/[% suites.$suite.harness %]">Enter Data</a></dt>
+   <dt><a href="http://test.csswg.org/harness/review/[% suites.$suite.harness %]">Review Results</a></dt>
+[% END %]
+       
 
 [% IF devel %]
  <p>This build exists to aid in test suite development and contains unreviewed
