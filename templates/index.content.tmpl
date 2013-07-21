@@ -1,14 +1,14 @@
 [% PROCESS "suitedata.tmpl" %]
 [% IF official %]
-  <h1>[% suites.$suite.title %] Conformance Test Suite</h1>
+  <h1>[% suites.$suite.title %]</h1>
+[% ELSE %]
+  <h1>Unofficial [% suites.$suite.title %]</h1>
+[% END %]
   <dt>Test Coordinator:</dt>
    	<dd>[% suites.$suite.owner %]</dd>
   
   <p>This is a <strong>[% statusNames.${suites.$suite.status}.title or "ERROR: $suite" %]</strong>
-     version of the [% suites.$suite.title %] Test Suite.</p>
-[% ELSE %]
-  <h1>[% suites.$suite.title %] Test Collection</h1>
-[% END %]
+     version of the [% suites.$suite.title %].</p>
 
 [% IF suites.$suite.harness != '' %]
    <p>You can provide test data or review the testing results for this test suite:</p>
@@ -25,19 +25,19 @@
  <p>Some tests in the test suite may contain errors.
 [% END %]
    Please check the latest version of the
-   <a href="[% suites.$suite.specroot %]">[% suites.$suite.title %] specification</a> 
+   <a href="[% suites.$suite.specroot %]">[% suites.$suite.spec %] specification</a>
    <strong>and its errata</strong>
    before assuming a failure is due to an implementation bug and
    not a test suite bug.</p>
 
 [% UNLESS official %]
  <p>You can find the <a href="[% suites.$suite.officialUrl %]">official
-  build</a> of the [% suites.$suite.title %] Test Suite on W3C's web site.</p>
+  build</a> of the [% suites.$suite.title %] on W3C's web site.</p>
 [% END %]
 
   <p>[% IF suites.$suite.status != 'fin' && suites.$suite.status != 'rc' %]
   In time we hope to correct all errors and extend this test suite to
-  cover all of [% suites.$suite.title %]. Your help is welcome in this effort.
+  cover all of [% suites.$suite.spec %]. Your help is welcome in this effort.
   [% END %]
   The appropriate mailing list for submitting tests and bug reports is
   <a href="http://lists.w3.org/Archives/Public/public-css-testsuite/">public-css-testsuite@w3.org</a>.
@@ -170,7 +170,7 @@
   from their titles, documentation, and location they are identical to the
   official tests of the same date. However, only the
   <a href="http://www.w3.org/Style/Test/[% suite %]/current/">official % suites.$suite.title %]
-  Conformance Test Suite</a> may be used as the basis for CSS conformance
+  </a> may be used as the basis for CSS conformance
   claims.</p>
 [% END %]
 

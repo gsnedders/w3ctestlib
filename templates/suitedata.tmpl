@@ -1,52 +1,11 @@
-[% flagInfo =
-    { '96dpi'     => { title => 'Test Only Valid on 96dpi Displays',
-                       abbr  => '96'},
-      'animated'  => { title => 'Animated Test',
-                       abbr  => 'Animated' },
-      'ahem'      => { title => 'Requires Ahem Font',
-                       abbr  => 'Ahem'},
-      'dom'       => { title => 'Requires DOM (Document Object Model) Support',
-                       abbr  => 'DOM/JS'},
-      'font'      => { title => 'Requires Special Font',
-                       abbr  => 'Font'},
-      'history'   => { title => 'Requires Session History',
-                       abbr  => 'History'},
-      'http'      => { title => 'Requires HTTP Headers',
-                       abbr  => 'HTTP'},
-      'image'     => { title => 'Requires Bitmap Graphics Support',
-                       abbr  => 'Bitmaps'},
-      'interact'  => { title => 'Requires User Interaction',
-                       abbr  => 'Interact'},
-      'invalid'   => { title => 'Tests Invalid CSS',
-                       abbr  => 'Invalid'},
-      'namespace' => { title => 'Requires XML Namespaces Support',
-                       abbr  => 'Namespaces'},
-      'may'       => { title => 'Behavior tested is preferred but optional.',
-                       abbr  => 'Optional'},
-      'paged'     => { title => 'Test Only Valid for Paged Media',
-                       abbr  => 'Paged'},
-      'userstyle' => { title => 'Test requres user style sheet or other special user settings.',
-                       abbr  => 'User'},
-      'scroll'    => { title => 'Test Only Valid for Continuous Media',
-                       abbr  => 'Scroll'},
-      'should'    => { title => 'Behavior tested is recommended but not required',
-                       abbr  => 'Recommend'},
-      'speech'    => { title => 'Requires speech support',
-                       abbr  => 'Speech'},
-      'svg'       => { title => 'Requires SVG Support',
-                       abbr  => 'SVG'}
-    }
-%]
-
 [% refCompMap =
     { '==' => '=',
       '!=' => '&#x2260;'
     }
 %]
-
 [%  statusNames = {
-      'pa' => {
-        'title' => 'Pre-Alpha',
+      'dev' => {
+        'title' => 'Development',
         'link'  => 'http://www.w3.org/Style/CSS/Test/#phase-pa' },
       'alpha' => {
         'title' => 'Alpha',
@@ -57,114 +16,10 @@
       'rc' => {
         'title' => 'Release Candidate',
         'link'  => 'http://www.w3.org/Style/CSS/Test/#phase-rc' },
-      'fin' => {
+      'final' => {
         'title' => 'Final',
         'link'  => 'http://www.w3.org/Style/CSS/Test/#phase-fin' },
     }
 %]
-
-[% suites = {
-      'css2.1' => {
-        'title'    => 'CSS2.1',
-        'specroot' => 'http://www.w3.org/TR/CSS21/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS21_DEV',
-        'status'   => 'rc' },
-      'css3-namespace' => {
-        'title'    => 'CSS Namespaces',
-        'specroot' => 'http://www.w3.org/TR/css3-namespace/',
-        'owner'    => 'None yet',
-        'harness'  => '',
-        'status'   => 'rc' },
-      'css3-page' => {
-        'title'    => 'CSS3 Paged Media',
-        'specroot' => 'http://www.w3.org/TR/css3-page/',
-        'owner'    => 'None yet',
-        'harness'  => '',
-        'status'   => 'pa' },
-      'css3-color' => {
-        'title'    => 'CSS3 Color',
-        'specroot' => 'http://www.w3.org/TR/css3-color/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS3-COLOR_DEV',
-        'status'   => 'rc' },
-      'css3-multicol' => {
-        'title'    => 'CSS Multi-column Layout Module',
-        'specroot' => 'http://www.w3.org/TR/css3-multicol/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS3-MULTICOL_DEV',
-        'status'   => 'pa' },
-      'css3-regions' => {
-        'title'    => 'CSS Regions Module',
-        'specroot' => 'http://www.w3.org/TR/css3-regions/',
-        'owner'    => 'Mihai Balan, Adobe Systems, mibalan @adobe.com',
-        'harness'  => 'CSS3-REGIONS_DEV',
-        'status'   => 'pa' },
-      'css-style-attr' => {
-        'title'    => 'CSS Style Attributes',
-        'specroot' => 'http://www.w3.org/TR/css-style-attr/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS-STYLE-ATTR_DEV',
-        'status'   => 'rc' },
-      'css3-transforms' => {
-        'title'    => 'CSS Transforms Module',
-        'specroot' => 'http://www.w3.org/TR/css3-transforms/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS3-TRANSFORMS_DEV',
-        'status'   => 'pa' },
-      'css3-background' => {
-        'title'    => 'CSS Backgrounds and Borders Module Level 3',
-        'specroot' => 'http://www.w3.org/TR/css3-background/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS3-BACKGROUND_DEV',
-        'status'   => 'pa' },
-      'css3-conditional' => {
-        'title'    => 'CSS Conditional Rules Module Level 3',
-        'specroot' => 'http://www.w3.org/TR/css3-conditional/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS3-CONDITIONAL_DEV',
-        'status'   => 'pa' },
-      'filter-effects' => {
-        'title'    => 'Filter Effects 1.0',
-        'specroot' => 'http://www.w3.org/TR/filter-effects/',
-        'owner'    => 'None yet',
-        'harness'  => 'FILTER-EFFECTS_DEV',
-        'status'   => 'pa' },
-      'css3-exclusions' => {
-        'title'    => 'CSS Exclusions and Shapes Module Level 3',
-        'specroot' => 'http://www.w3.org/TR/css3-exclusions/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS3-EXCLUSIONS_DEV',
-        'status'   => 'pa' },
-      'css-masking' => {
-        'title'    => 'CSS Masking Module',
-        'specroot' => 'http://www.w3.org/TR/css-masking/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS-MASKING_DEV',
-        'status'   => 'pa' },
-      'css3-flexbox' => {
-        'title'    => 'CSS Flexible Box Layout Module',
-        'specroot' => 'http://www.w3.org/TR/css3-flexbox/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS3-FLEXBOX_DEV',
-        'status'   => 'pa' },
-      'css3-text' => {
-        'title'    => 'CSS Text Module Level 3',
-        'specroot' => 'http://www.w3.org/TR/css3-text/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS3-TEXT_DEV',
-        'status'   => 'pa' },
-      'css3-writing-modes' => {
-        'title'    => 'CSS Writing Modes Module Level 3',
-        'specroot' => 'http://www.w3.org/TR/css3-writing-modes/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS3-WRITING-MODES_DEV',
-        'status'   => 'pa' },
-      'css3-fonts' => {
-        'title'    => 'CSS Fonts Module Level 3',
-        'specroot' => 'http://www.w3.org/TR/css3-fonts/',
-        'owner'    => 'None yet',
-        'harness'  => 'CSS3-FONTS_DEV',
-        'status'   => 'pa' },
-    }
-%]
+[% PROCESS "flags.tmpl" %]
+[% PROCESS "suites.tmpl" %]

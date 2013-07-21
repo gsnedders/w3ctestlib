@@ -3,9 +3,9 @@
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
  <head>
 [% IF official %]
-  <title>[% suites.$suite.title %] Conformance Test Suite</title>
+  <title>[% suites.$suite.title %]</title>
 [% ELSE %]
-  <title>[% suites.$suite.title %] Test Collection</title>
+  <title>Unofficial [% suites.$suite.title %]</title>
 [% END %]
   <style type="text/css">
     @import "http://www.w3.org/StyleSheets/TR/base.css";
