@@ -16,6 +16,7 @@ from lxml import etree
 from lxml.etree import ParseError
 from Utils import getMimeFromExt, escapeToNamedASCII, basepath, isPathInsideBase, relativeURL, assetName
 from mercurial import ui, hg
+import HTMLSerializer
 
 class SourceTree(object):
   """Class that manages structure of test repository source.
@@ -636,6 +637,8 @@ class ReftestManifest(ConfigSource):
 import Utils # set up XML catalog
 xhtmlns = '{http://www.w3.org/1999/xhtml}'
 svgns = '{http://www.w3.org/2000/svg}'
+xmlns = '{http://www.w3.org/XML/1998/namespace}'
+xlinkns = '{http://www.w3.org/1999/xlink}'
 
 class XMLSource(FileSource):
   """FileSource object with support reading XML trees."""
@@ -697,6 +700,7 @@ class XMLSource(FileSource):
       if ((not self.metadata) and self.tree and (not self.error)):
         self.extractMetadata(self.tree)
     except etree.ParseError as e:
+      print "PARSE ERROR: " + self.relpath
       self.cacheAsParseError(self.sourcepath, e)
       e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
@@ -898,27 +902,16 @@ class XHTMLSource(XMLSource):
     """
     XMLSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
 
-  def serializeXHTML(self):
+  def serializeXHTML(self, doctype = None):
     return self.serializeXML()
 
-  def serializeHTML(self, doctype='html'):
+  def serializeHTML(self, doctype = None):
     self.validate()
     # Serialize
-    o = html5lib.serializer.serialize(self.tree, tree='lxml',
-                                      format='html',
-                                      emit_doctype=doctype,
-                                      lang_attr='html',
-                                      resolve_entities=False,
-                                      escape_invisible='named',
-                                      omit_optional_tags=False,
-                                      minimize_boolean_attributes=False,
-                                      quote_attr_values=True)
-
-    # lxml fixup for eating whitespace outside root element
-    m = re.search('<!DOCTYPE[^>]+>(\s*)<', o)
-    if m.group(1) == '': # match first to avoid perf hit from searching whole doc
-      o = re.sub('(<!DOCTYPE[^>]+>)<', '\g<1>\n<', o)
-    return o
+#    print self.relpath
+    serializer = HTMLSerializer.HTMLSerializer()
+    output = serializer.serializeHTML(self.tree, doctype)
+    return output
 
 
 class SVGSource(XMLSource):
@@ -1073,10 +1066,8 @@ class HTMLSource(XMLSource):
   """FileSource object with support for HTML metadata and HTML->XHTML conversions (untested)."""
 
   # Private Data and Methods
-  __parser = html5lib.HTMLParser(tree = treebuilders.getTreeBuilder('dom')) 
-    # XXX it would be great to use lxml etree, but it chokes on some of our tests...
-    # if that would work, the NodeWrapper and injectMetadataLink below could be removed
-
+  __parser = html5lib.HTMLParser(tree = treebuilders.getTreeBuilder('lxml'))
+ 
   # Public Methods
 
   def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
@@ -1090,10 +1081,10 @@ class HTMLSource(XMLSource):
     try:
       data = self.data()
       if data:
-        htmlStream = html5lib.inputstream.HTMLInputStream(StringReader(data))
+        htmlStream = html5lib.inputstream.HTMLInputStream(data)
         if ('utf-8-sig' != self.encoding):  # if we found a BOM, respect it
           self.encoding = htmlStream.detectEncoding()[0]
-        self.tree = self.__parser.parse(StringReader(data), encoding = self.encoding)
+        self.tree = self.__parser.parse(data, encoding = self.encoding)
         self.injectedTags = {}
       else:
         self.tree = None
@@ -1104,41 +1095,51 @@ class HTMLSource(XMLSource):
       if ((not self.metadata) and self.tree and (not self.error)):
         self.extractMetadata(self.tree)
     except Exception as e:
+      print "PARSE ERROR: " + self.relpath
       e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
       self.encoding = 'utf-8'
-      
+
   def _injectXLinks(self, element, nodeList):
     injected = False
 
     xlinkAttrs = ['href', 'type', 'role', 'arcrole', 'title', 'show', 'actuate']
-    if (element.hasAttribute('href')):
+    if (element.get('href') or element.get(xlinkns + 'href')):
       for attr in xlinkAttrs:
-        if (element.hasAttribute(attr)):
+        if (element.get(xlinkns + attr)):
           injected = True
-          value = element.getAttribute(attr)
-          element.removeAttribute(attr)
-          element.setAttribute('xlink:' + attr, value)
-          nodeList.append((element, 'xlink:' + attr, attr))
+        if (element.get(attr)):
+          injected = True
+          value = element.get(attr)
+          del element.attrib[attr]
+          element.set(xlinkns + attr, value)
+          nodeList.append((element, xlinkns + attr, attr))
 
-    childNode = element.firstChild
-    while (childNode):
-      if ((dom.Node.ELEMENT_NODE == childNode.nodeType) and ('foreignobject' != childNode.tagName.lower())):
-        injected |= self._injectXLinks(childNode, nodeList)
-      childNode = childNode.nextSibling
+    for child in element:
+        if (type(child.tag) == type('')): # element node
+            qName = etree.QName(child.tag)
+            if ('foreignobject' != qName.localname.lower()):
+                injected |= self._injectXLinks(child, nodeList)
     return injected
     
+    
+  def _findElements(self, namespace, elementName):
+      elements = self.tree.findall('.//{' + namespace + '}' + elementName)
+      if (self.tree.getroot().tag == '{' + namespace + '}' + elementName):
+          elements.insert(0, self.tree.getroot())
+      return elements
+      
   def _injectNamespace(self, elementName, prefix, namespace, doXLinks, nodeList):
-    attr = 'xmlns:' + prefix if (prefix) else 'xmlns'
-    elements = self.tree.getElementsByTagName(elementName)
+    attr = xmlns + prefix if (prefix) else 'xmlns'
+    elements = self._findElements(namespace, elementName)
     for element in elements:
-      if not element.hasAttribute(attr):
-        element.setAttribute(attr, namespace)
+      if not element.get(attr):
+        element.set(attr, namespace)
         nodeList.append((element, attr, None))
         if (doXLinks):
           if (self._injectXLinks(element, nodeList)):
-            element.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink')
-            nodeList.append((element, 'xmlns:xlink', None))
+            element.set(xmlns + 'xlink', 'http://www.w3.org/1999/xlink')
+            nodeList.append((element, xmlns + 'xlink', None))
     
   def injectNamespaces(self):
     nodeList = []
@@ -1148,51 +1149,33 @@ class HTMLSource(XMLSource):
     return nodeList
     
   def removeNamespaces(self, nodeList):
-    if nodeList:
-      for element, attr, oldAttr in nodeList:
-        if (oldAttr):
-          value = element.getAttribute(attr)
-          element.removeAttribute(attr)
-          element.setAttribute(oldAttr, value)
-        else:
-          element.removeAttribute(attr)
+      if nodeList:
+          for element, attr, oldAttr in nodeList:
+              if (oldAttr):
+                  value = element.get(attr)
+                  del element.attrib[attr]
+                  element.set(oldAttr, value)
+              else:
+                  del element.attrib[attr]
     
-  def serializeXHTML(self):
+  def serializeXHTML(self, doctype = None):
     self.validate()
     # Serialize
     nodeList = self.injectNamespaces()
-    o = html5lib.serializer.serialize(self.tree, tree='dom',
-                                      format='xhtml',
-                                      emit_doctype='html5', # XXX work around serializer bug
-                                      lang_attr='html',
-                                      resolve_entities=False,
-                                      escape_invisible='named',
-                                      escape_rcdata=True,
-                                      omit_optional_tags=False,
-                                      minimize_boolean_attributes=False,
-                                      quote_attr_values=True)
+#    print self.relpath
+    serializer = HTMLSerializer.HTMLSerializer()
+    o = serializer.serializeXHTML(self.tree, doctype)
+
     self.removeNamespaces(nodeList)
-    # fixup DOCTYPE
-    o = re.sub('(<!DOCTYPE html><)', '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">\n<', o)
     return o
 
-  def serializeHTML(self, doctype='preserve'):
+  def serializeHTML(self, doctype = None):
     self.validate()
     # Serialize
-    o = html5lib.serializer.serialize(self.tree, tree='dom',
-                                      format='html',
-                                      emit_doctype=doctype,
-                                      lang_attr='html',
-                                      resolve_entities=False,
-                                      escape_invisible='named',
-                                      omit_optional_tags=False,
-                                      minimize_boolean_attributes=False,
-                                      quote_attr_values=True)
+#    print self.relpath
+    serializer = HTMLSerializer.HTMLSerializer()
+    o = serializer.serializeHTML(self.tree, doctype)
 
-    # lxml fixup for eating whitespace outside root element
-    m = re.search('<!DOCTYPE[^>]+>(\s*)<', o)
-    if m.group(1) == '': # match first to avoid perf hit from searching whole doc
-      o = re.sub('(<!DOCTYPE[^>]+>)<', '\g<1>\n<', o)
     return o
 
   def data(self):
@@ -1205,32 +1188,3 @@ class HTMLSource(XMLSource):
       return FileSource.unicode(self)
     return self.serializeHTML()
     
-  def injectMetadataLink(self, rel, href, tagCode = None):
-    """Inject (prepend) <link> data given in head. 
-       Injected element is tagged with `tagCode`, which can be
-       used to clear it with clearInjectedTags later.
-    """
-    node = self.tree.createElement('link')
-    node.setAttribute('rel', rel)
-    node.setAttribute('href', href)
-    self.validate()
-    
-    head = self.tree.getElementsByTagName('head').item(0)
-    head.insertBefore(node, head.firstChild)
-    node = NodeWrapper(node)
-    self.injectedTags[node] = tagCode or True
-    return node
-
-  def getMetadataElements(self, tree):
-    head = self.tree.getElementsByTagName('head').item(0)
-    if (None != head):
-      elements = []
-      node = head.firstChild
-      while (None != node):
-        if (node.nodeType == dom.Node.ELEMENT_NODE):
-          elements.append(NodeWrapper(node))
-        node = node.nextSibling
-      return elements
-    return None
-
-

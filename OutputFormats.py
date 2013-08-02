@@ -129,7 +129,7 @@ class HTML5Format(HTMLFormat):
     if hasattr(source, 'hasFlag') and source.hasFlag('nonHTML'):
       return
     if isinstance(source, XHTMLSource) and self.convert:
-      source.write(self, source.serializeHTML('html'))
+      source.write(self, source.serializeHTML())
     else:
       source.write(self)
 
@@ -166,7 +166,7 @@ class XHTMLPrintFormat(XHTMLFormat):
 
   def testTransform(self, source):
     assert isinstance(source, XHTMLSource)
-    output = source.serializeXHTML()
+    output = source.serializeXHTML('xhtml10')
 
     headermeta = {'suitename' : self.testSuiteName,
                   'testid'    : source.name(),
