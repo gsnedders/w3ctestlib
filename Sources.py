@@ -68,13 +68,24 @@ class SourceTree(object):
   def isIgnored(self, filePath):
     pathList, fileName = self._splitPath(filePath)
     return self._isIgnored(pathList, fileName)
-      
+  
+  def _isToolPath(self, pathList):
+    return ('tools' in pathList)
+  
+  def _isTool(self, pathList, fileName):
+    return self._isToolPath(pathList)
+  
+  def isTool(self, filePath):
+    pathList, fileName = self._splitPath(filePath)
+    return (not self._isIgnored(pathList, fileName)) and self._isTool(pathList, fileName)
+
   def _isSupportPath(self, pathList):
     return ('support' in pathList)
       
   def _isSupport(self, pathList, fileName):
     return (self._isSupportPath(pathList) or 
-            ((not self._isReference(pathList, fileName)) and 
+            ((not self._isTool(pathList, fileName)) and
+             (not self._isReference(pathList, fileName)) and
              (not self._isTestCase(pathList, fileName))))
       
   def isSupport(self, filePath):
@@ -85,7 +96,7 @@ class SourceTree(object):
     return (('reftest' in pathList) or ('reference' in pathList))
       
   def _isReference(self, pathList, fileName):
-    if (not self._isSupportPath(pathList)):
+    if ((not self._isSupportPath(pathList)) and (not self._isToolPath(pathList))):
       baseName, fileExt = os.path.splitext(fileName)[:2]
       if (bool(re.search('(^ref-|^notref-).+', baseName)) or 
           bool(re.search('.+(-ref[0-9]*$|-notref[0-9]*$)', baseName)) or 
@@ -100,7 +111,7 @@ class SourceTree(object):
     return (not self._isIgnored(pathList, fileName)) and self._isReference(pathList, fileName)
   
   def _isTestCase(self, pathList, fileName):
-    if ((not self._isSupportPath(pathList)) and (not self._isReference(pathList, fileName))):
+    if ((not self._isToolPath(pathList)) and (not self._isSupportPath(pathList)) and (not self._isReference(pathList, fileName))):
       fileExt = os.path.splitext(fileName)[1]
       return (fileExt in self.mTestExtensions)
     return False
@@ -121,6 +132,8 @@ class SourceTree(object):
       return 'reference'
     if (self._isTestCase(pathList, fileName)):
       return 'testcase'
+    if (self._isTool(pathList, fileName)):
+      return 'tool'
     return 'support'
   
 
