@@ -44,8 +44,7 @@ class SourceTree(object):
       
   def isTracked(self, filePath):
     pathList, fileName = self._splitPath(filePath)
-    return ((not self._isIgnored(pathList, fileName)) and
-            (self._isApprovedPath(pathList) or self._isSubmittedPath(pathList)))
+    return (not self._isIgnored(pathList, fileName))
       
   def _isApprovedPath(self, pathList):
     return ((1 < len(pathList)) and ('approved' == pathList[0]) and (('support' == pathList[1]) or ('src' in pathList)))
@@ -54,16 +53,14 @@ class SourceTree(object):
     pathList, fileName = self._splitPath(filePath)
     return (not self._isIgnored(pathList, fileName)) and self._isApprovedPath(pathList)
       
-  def _isSubmittedPath(self, pathList):
-    return (('submitted' in pathList) and ('incoming' not in pathList))
-  
-  def isSubmittedPath(self, filePath):
-    pathList, fileName = self._splitPath(filePath)
-    return (not self._isIgnored(pathList, fileName)) and self._isSubmittedPath(pathList)
-  
   def _isIgnored(self, pathList, fileName):
-    return (('.hg' in pathList) or ('.svn' in pathList) or ('cvs' in pathList) or
-            fileName.startswith('.directory') or ('lock' == fileName))
+    if (pathList):  # ignore files in root
+      return (('.svn' in pathList) or ('cvs' in pathList) or
+              fileName.startswith('.directory') or ('lock' == fileName) or
+              ('incoming' in pathList) or ('work-in-progress' in pathList) or
+              ('data' in pathList) or ('archive' in pathList) or
+              ('sections.dat' == fileName) or ('get-spec-sections.pl' == fileName))
+    return True
       
   def isIgnored(self, filePath):
     pathList, fileName = self._splitPath(filePath)
