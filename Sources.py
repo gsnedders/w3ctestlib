@@ -57,6 +57,7 @@ class SourceTree(object):
     if (pathList):  # ignore files in root
       return (('.svn' in pathList) or ('cvs' in pathList) or
               fileName.startswith('.directory') or ('lock' == fileName) or
+              ('.ds_store' == fileName) or
               ('incoming' in pathList) or ('work-in-progress' in pathList) or
               ('data' in pathList) or ('archive' in pathList) or
               ('sections.dat' == fileName) or ('get-spec-sections.pl' == fileName))
