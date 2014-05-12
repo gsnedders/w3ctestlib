@@ -42,7 +42,7 @@ class Section:
 
 class Indexer:
 
-  def __init__(self, suite, tocDataPath, splitChapter=False, templatePathList=None,
+  def __init__(self, suite, sections, suites, flags, splitChapter=False, templatePathList=None,
                extraData=None, overviewTmplNames=None, overviewCopyExts=('.css', 'htaccess')):
     """Initialize indexer with TestSuite `suite` toc data file
        `tocDataPath` and additional template paths in list `templatePathList`.
@@ -82,12 +82,14 @@ class Indexer:
 
     # Load toc data
     self.sections = {}
-    for record in codecs.open(tocDataPath, 'r', 'utf-8'):
-      uri, numstr, title = record.split('\t')
+    for uri, numstr, title in sections:
       uri = intern(uri.encode('ascii'))
       numstr = escapeToNamedASCII(numstr)
-      title = escapeToNamedASCII(title)
+      title = escapeToNamedASCII(title) if title else None
       self.sections[uri] = Section(uri, title, numstr)
+    
+    self.suites = suites
+    self.flags = flags
 
     # Initialize storage
     self.errors = set()
@@ -100,11 +102,13 @@ class Indexer:
       if data: # Shallow copy for template output
         data = data.copy()
         data['links'] = [link for link in data['links']
-                         if link.find(self.suite.specroot) > -1]
+                         if (link.find(self.suite.specroot) > -1) or
+                            (link.find(self.suite.draftroot) > -1)]
         data['file'] = '/'.join((group.name, test.relpath)) \
                        if group.name else test.relpath
         self.alltests.append(data)
         for uri in data['links']:
+          uri = uri.replace(self.suite.draftroot, self.suite.specroot)
           if self.sections.has_key(uri):
             testlist = self.sections[uri].tests.append(data)
         for credit in data['credits']:
@@ -136,11 +140,14 @@ class Indexer:
     data['suitetitle']   = self.suite.title
     data['suite']        = self.suite.name
     data['specroot']     = self.suite.specroot
+    data['draftroot']    = self.suite.draftroot
     data['contributors'] = self.contributors
     data['tests']        = self.alltests
     data['extmap']       = ExtensionMap({'.xht':'', '.html':'', '.htm':'', '.svg':''})
     data['formats']      = self.suite.formats
     data['addtests']     = addTests
+    data['suites']       = self.suites
+    data['flagInfo']     = self.flags
 
     # Copy simple copy files
     for tmplDir in reversed(self.templatePath):
@@ -174,12 +181,15 @@ class Indexer:
     data['suitetitle'] = self.suite.title
     data['suite']      = self.suite.name
     data['specroot']   = self.suite.specroot
+    data['draftroot']  = self.suite.draftroot
     
     data['indexext']   = format.indexExt
     data['isXML']      = format.indexExt.startswith('.x')
     data['formatdir']  = format.formatDirName
     data['extmap']     = format.extMap
     data['tests']      = self.alltests
+    data['suites']     = self.suites
+    data['flagInfo']   = self.flags
 
     # Generate indices:
 
@@ -202,10 +212,12 @@ class Indexer:
           chap = section
           chap.sections = []
           chap.testcount = 0
+          chap.testnames = set()
           chapters.append(chap)
           if not chap.tests:
             continue;
-        chap.testcount += len(section.tests)
+        chap.testnames.update([test['name'] for test in section.tests])
+        chap.testcount = len(chap.testnames)
         chap.sections.append(section)
 
       # Generate main toc

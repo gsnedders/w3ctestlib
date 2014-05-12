@@ -28,19 +28,22 @@ class SourceTree(object):
     self.mReferenceExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml', '.png', '.svg']
     self.mRepository = repository
   
+  def _splitDirs(self, dir):
+    if ('' == dir):
+      pathList = []
+    elif ('/' in dir):
+      pathList = dir.split('/')
+    else:
+      pathList = dir.split(os.path.sep)
+    return pathList
+  
   def _splitPath(self, filePath):
     """split a path into a list of directory names and the file name
        paths may come form the os or mercurial, which always uses '/' as the 
        directory separator
     """
-    path, fileName = os.path.split(filePath.lower())
-    if ('' == path):
-      pathList = []
-    elif ('/' in path):
-      pathList = path.split('/')
-    else:
-      pathList = path.split(os.path.sep)
-    return (pathList, fileName)
+    dir, fileName = os.path.split(filePath.lower())
+    return (self._splitDirs(dir), fileName)
       
   def isTracked(self, filePath):
     pathList, fileName = self._splitPath(filePath)
@@ -52,20 +55,30 @@ class SourceTree(object):
   def isApprovedPath(self, filePath):
     pathList, fileName = self._splitPath(filePath)
     return (not self._isIgnored(pathList, fileName)) and self._isApprovedPath(pathList)
-      
-  def _isIgnored(self, pathList, fileName):
-    if (pathList):  # ignore files in root
-      return (('.svn' in pathList) or ('cvs' in pathList) or
-              fileName.startswith('.directory') or ('lock' == fileName) or
-              ('.ds_store' == fileName) or
+
+  def _isIgnoredPath(self, pathList):
+      return (('.hg' in pathList) or ('.git' in pathList) or
+              ('.svn' in pathList) or ('cvs' in pathList) or
               ('incoming' in pathList) or ('work-in-progress' in pathList) or
               ('data' in pathList) or ('archive' in pathList) or
+              ('tools' == pathList[0]))
+
+  def _isIgnored(self, pathList, fileName):
+    if (pathList):  # ignore files in root
+      return (self._isIgnoredPath(pathList) or
+              fileName.startswith('.directory') or ('lock' == fileName) or
+              ('.ds_store' == fileName) or
+              fileName.startswith('.hg') or fileName.startswith('.git') or
               ('sections.dat' == fileName) or ('get-spec-sections.pl' == fileName))
     return True
       
   def isIgnored(self, filePath):
     pathList, fileName = self._splitPath(filePath)
     return self._isIgnored(pathList, fileName)
+  
+  def isIgnoredDir(self, dir):
+    pathList = self._splitDirs(dir)
+    return self._isIgnoredPath(pathList)
   
   def _isToolPath(self, pathList):
     return ('tools' in pathList)
@@ -107,6 +120,10 @@ class SourceTree(object):
   def isReference(self, filePath):
     pathList, fileName = self._splitPath(filePath)
     return (not self._isIgnored(pathList, fileName)) and self._isReference(pathList, fileName)
+  
+  def isReferenceAnywhere(self, filePath):
+    pathList, fileName = self._splitPath(filePath)
+    return self._isReference(pathList, fileName)
   
   def _isTestCase(self, pathList, fileName):
     if ((not self._isToolPath(pathList)) and (not self._isSupportPath(pathList)) and (not self._isReference(pathList, fileName))):
@@ -194,7 +211,7 @@ class SourceSet:
     """
     return self.pathMap.itervalues()
 
-  def addSource(self, source):
+  def addSource(self, source, ui):
     """Add FileSource `source`. Throws exception if we already have
        a FileSource with the same path relpath but different contents.
        (ConfigSources are exempt from this requirement.)
@@ -207,10 +224,10 @@ class SourceSet:
         if isinstance(source, ConfigSource):
           cachedSource.append(source)
         else:
-          raise Exception("File merge mismatch %s vs %s for %s" % \
+          ui.warn("File merge mismatch %s vs %s for %s\n" % \
                 (cachedSource.sourcepath, source.sourcepath, source.relpath))
 
-  def add(self, sourcepath, relpath):
+  def add(self, sourcepath, relpath, ui):
     """Generate and add FileSource from sourceCache. Return the resulting
        FileSource.
 
@@ -218,21 +235,21 @@ class SourceSet:
        relpath but different contents.
     """
     source = self.sourceCache.generateSource(sourcepath, relpath)
-    self.addSource(source)
+    self.addSource(source, ui)
     return source
 
   @staticmethod
-  def combine(a, b):
+  def combine(a, b, ui):
     """Merges a and b, and returns whichever one contains the merger (which
        one is chosen based on merge efficiency). Can accept None as an argument.
     """
     if not (a and b):
       return a or b
     if len(a) < len(b):
-      return b.merge(a)
-    return a.merge(b)
+      return b.merge(a, ui)
+    return a.merge(b, ui)
 
-  def merge(self, other):
+  def merge(self, other, ui):
     """Merge sourceSet's contents into this SourceSet.
 
        Throws a RuntimeError if there's a sourceCache mismatch.
@@ -243,7 +260,7 @@ class SourceSet:
       raise RuntimeError
 
     for source in other.pathMap.itervalues():
-      self.addSource(source)
+      self.addSource(source, ui)
     return self
 
   def adjustContentPaths(self, format):
@@ -431,7 +448,7 @@ class FileSource:
          - references [list of (reftype, relpath) per reference; None if not reftest]
          - revision   [revision id of last commit]
          - selftest [bool]
-       Strings are given in UTF-8 unless asUnicode==True.
+       Strings are given in ascii unless asUnicode==True.
     """
     
     self.validate()
@@ -711,7 +728,7 @@ class XMLSource(FileSource):
       if ((not self.metadata) and self.tree and (not self.error)):
         self.extractMetadata(self.tree)
     except etree.ParseError as e:
-      print "PARSE ERROR: " + self.relpath
+      print "PARSE ERROR: " + self.sourcepath
       self.cacheAsParseError(self.sourcepath, e)
       e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
@@ -1106,7 +1123,7 @@ class HTMLSource(XMLSource):
       if ((not self.metadata) and self.tree and (not self.error)):
         self.extractMetadata(self.tree)
     except Exception as e:
-      print "PARSE ERROR: " + self.relpath
+      print "PARSE ERROR: " + self.sourcepath
       e.W3CTestLibErrorLocation = self.sourcepath
       self.error = e
       self.encoding = 'utf-8'

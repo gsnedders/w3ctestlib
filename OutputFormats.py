@@ -60,7 +60,7 @@ class BasicFormat:
     # Translate path
     if (self.convert):
       relpath = self.extMap.translate(relpath)
-    if (self.sourceTree.isReference(relpath)):
+    if (self.sourceTree.isReferenceAnywhere(relpath)):
       relpath = join('reference', basename(relpath))
     # XXX when forcing support files into support path, need to account for support/support
     dest = join(self.root, self.subdir, relpath) if self.subdir \

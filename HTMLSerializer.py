@@ -16,6 +16,7 @@ class HTMLSerializer(object):
     gHTMLns = 'http://www.w3.org/1999/xhtml'
   
     gDefaultNamespaces = {'http://www.w3.org/XML/1998/namespace': 'xmlns',
+                          'http://www.w3.org/2000/xmlns/': 'xmlns',
                           'http://www.w3.org/1999/xlink': 'xlink'}
 
     gVoidElements = frozenset((

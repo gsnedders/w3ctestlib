@@ -54,16 +54,18 @@
     </thead>
 [% FOREACH section IN sections %]
     <tbody id="s[% section.numstr %]">
+      [% IF section.title %]
       <tr><th colspan="4" scope="rowgroup">
         <a href="#s[% section.numstr %]">+</a>
         <a href="[% section.uri %]">[% section.numstr +%] [%+ section.title %]</a></th></tr>
+      [% END %]
       <!-- [% section.tests.size %] tests -->
   [% FOREACH entry IN section.tests.sort('name') %]
     [% FOREACH flag IN entry.flags %]
       [% SET skip = 1 IF flag == formatMismatchFlag %]
     [% END %]
     [% UNLESS skip %]
-      [% primary = entry.links.0 == section.uri %]
+      [% primary = (entry.links.0 == section.uri) or (entry.links.0 == section.uri.replace(specroot, draftroot)) %]
       <tr id="[% entry.name %]-[% section.numstr %]" class="
               [% 'primary' IF primary %]
               [% ' ' IF primary and entry.flags.size > 0 %]

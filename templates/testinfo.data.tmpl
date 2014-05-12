@@ -6,7 +6,7 @@ id	references	title	flags	links	revision	credits	assertion
 [%- END +%]	
 [%- test.title FILTER collapse +%]	
 [%- test.flags.join(',') +%]	
-[%- test.links.join(',').replace(specroot, '') +%]	
+[%- test.links.join(',').replace(specroot, '').replace(draftroot, '') +%]	
 [%- test.revision +%]	
 [%- FOREACH credit IN test.credits -%]
 `[% credit.0 %]`<[% credit.1 %]>[% ',' IF not loop.last() -%]

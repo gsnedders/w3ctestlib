@@ -26,7 +26,7 @@ class TestGroup:
       groupA.merge(groupB)
     return groupA or groupB
 
-  def __init__(self, sourceCache, importDir, name=None, title=None, **kwargs):
+  def __init__(self, sourceCache, importDir, name=None, title=None, ui = None, **kwargs):
     """Initialize with:
          SourceCache `sourceCache`
          Group name `name`, which must be a possible directory name or None
@@ -46,6 +46,8 @@ class TestGroup:
     # Save name
     self.name = name
     self.title = title
+    
+    self.ui = ui
     
     sourceTree = sourceCache.sourceTree
 
@@ -67,7 +69,7 @@ class TestGroup:
           for name in files:
             sourcepath = join(root, name)
             relpath = Utils.relpath(sourcepath, importDir)
-            self.support.add(sourcepath, relpath)
+            self.support.add(sourcepath, relpath, self.ui)
 
     # Load tests
     self.tests = SourceSet(sourceCache)
@@ -84,7 +86,7 @@ class TestGroup:
         test = sourceCache.generateSource(testSrc, testRel)
         ref = sourceCache.generateSource(refSrc, refRel)
         test.addReference(ref, refType)
-        self.tests.addSource(test)
+        self.tests.addSource(test, self.ui)
     else:
       self.manifest = None
       # Import tests
@@ -98,7 +100,7 @@ class TestGroup:
         if sourceTree.isTestCase(filePath):
           test = sourceCache.generateSource(filePath, fileName)
           if (test.isTest()):
-            self.tests.addSource(test)
+            self.tests.addSource(test, self.ui)
 
     for test in self.tests.iter():
       if (test.isReftest()):
@@ -106,13 +108,16 @@ class TestGroup:
         usedRefs[test.sourcepath] = '=='
         def loadReferences(source): # XXX need to verify refType for mutual exclusion (ie: a == b != a)
           for refSrcPath, refRelPath, refType in source.getReferencePaths():
-            ref = sourceCache.generateSource(refSrcPath, refRelPath)
-            source.addReference(ref)
-            if (refSrcPath not in usedRefs):
-              usedRefs[refSrcPath] = refType
-              if (ref not in self.tests):
-                self.refs.addSource(ref)
-              loadReferences(ref)
+            if (exists(refSrcPath)):
+              ref = sourceCache.generateSource(refSrcPath, refRelPath)
+              source.addReference(ref)
+              if (refSrcPath not in usedRefs):
+                usedRefs[refSrcPath] = refType
+                if (ref not in self.tests):
+                  self.refs.addSource(ref, self.ui)
+                loadReferences(ref)
+            else:
+              ui.warn("Missing Reference file: ", refSrcPath, "\n  referenced from: ", source.sourcepath, "\n")
         loadReferences(test)
 
 
@@ -147,13 +152,13 @@ class TestGroup:
       self.htaccess = self.htaccess or other.htaccess
     other.htaccess = None
 
-    self.support = SourceSet.combine(self.support, other.support)
+    self.support = SourceSet.combine(self.support, other.support, self.ui)
     other.support = None
 
-    self.tests = SourceSet.combine(self.tests, other.tests)
+    self.tests = SourceSet.combine(self.tests, other.tests, self.ui)
     other.tests = None
     
-    self.refs  = SourceSet.combine(self.refs, other.refs)
+    self.refs  = SourceSet.combine(self.refs, other.refs, self.ui)
     other.refs = None
     if self.manifest and other.manifest:
       self.manifest.append(other.manifest)
