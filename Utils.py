@@ -152,7 +152,9 @@ def escapeToNamed(text):
       escapable.add(c)
   if type(text) == types.UnicodeType:
     for c in escapable:
-      text = text.replace(c, "&%s;" % entityify[c.encode('Latin-1', 'xmlcharrefreplace')])
+      cLatin = c.encode('Latin-1', 'ignore')
+      if (cLatin in entityify):
+        text = text.replace(c, "&%s;" % entityify[cLatin])
   else:
     for c in escapable:
       text = text.replace(c, "&%s;" % entityify[c])

@@ -207,7 +207,7 @@ class Indexer:
       lastChapNum = '$' # some nonmatching initial char
       chap = None
       for section in sectionlist:
-        if section.chapterNum() != lastChapNum:
+        if (section.title and (section.chapterNum() != lastChapNum)):
           lastChapNum = section.chapterNum()
           chap = section
           chap.sections = []
