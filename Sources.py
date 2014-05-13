@@ -62,7 +62,7 @@ class SourceTree(object):
               ('.svn' in pathList) or ('cvs' in pathList) or
               ('incoming' in pathList) or ('work-in-progress' in pathList) or
               ('data' in pathList) or ('archive' in pathList) or
-              ('tools' == pathList[0]))
+              ('test-plan' in pathList) or ('tools' == pathList[0]))
 
   def _isIgnored(self, pathList, fileName):
     if (pathList):  # ignore files in root
