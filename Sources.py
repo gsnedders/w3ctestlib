@@ -10,13 +10,14 @@ import shutil
 import re
 import codecs
 from xml import dom
-import html5lib # Warning: This uses a patched version of html5lib
+import html5lib
 from html5lib import treebuilders, inputstream
 from lxml import etree
 from lxml.etree import ParseError
 from Utils import getMimeFromExt, escapeToNamedASCII, basepath, isPathInsideBase, relativeURL, assetName
 from mercurial import ui, hg
 import HTMLSerializer
+import warnings
 
 class SourceTree(object):
   """Class that manages structure of test repository source.
@@ -1109,11 +1110,13 @@ class HTMLSource(XMLSource):
     try:
       data = self.data()
       if data:
-        htmlStream = html5lib.inputstream.HTMLInputStream(data)
-        if ('utf-8-sig' != self.encoding):  # if we found a BOM, respect it
-          self.encoding = htmlStream.detectEncoding()[0]
-        self.tree = self.__parser.parse(data, encoding = self.encoding)
-        self.injectedTags = {}
+        with warnings.catch_warnings():
+          warnings.simplefilter("ignore")
+          htmlStream = html5lib.inputstream.HTMLInputStream(data)
+          if ('utf-8-sig' != self.encoding):  # if we found a BOM, respect it
+            self.encoding = htmlStream.detectEncoding()[0]
+          self.tree = self.__parser.parse(data, encoding = self.encoding)
+          self.injectedTags = {}
       else:
         self.tree = None
         self.error = 'Empty source file'
