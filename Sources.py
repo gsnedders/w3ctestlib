@@ -9,6 +9,7 @@ import filecmp
 import shutil
 import re
 import codecs
+import collections
 from xml import dom
 import html5lib
 from html5lib import treebuilders, inputstream
@@ -62,7 +63,8 @@ class SourceTree(object):
               ('.svn' in pathList) or ('cvs' in pathList) or
               ('incoming' in pathList) or ('work-in-progress' in pathList) or
               ('data' in pathList) or ('archive' in pathList) or
-              ('test-plan' in pathList) or ('tools' == pathList[0]))
+              ('reports' in pathList) or ('tools' == pathList[0]) or
+              ('test-plan' in pathList) or ('test-plans' in pathList))
 
   def _isIgnored(self, pathList, fileName):
     if (pathList):  # ignore files in root
@@ -145,12 +147,12 @@ class SourceTree(object):
   def getAssetType(self, filePath):
     pathList, fileName = self._splitPath(filePath)
     if (self._isReference(pathList, fileName)):
-      return 'reference'
+      return intern('reference')
     if (self._isTestCase(pathList, fileName)):
-      return 'testcase'
+      return intern('testcase')
     if (self._isTool(pathList, fileName)):
-      return 'tool'
-    return 'support'
+      return intern('tool')
+    return intern('support')
   
 
 class SourceCache:
@@ -297,6 +299,117 @@ class StringReader(object):
 class SourceMetaError(Exception):
   pass
 
+class NamedDict(object):
+    def get(self, key):
+        if (key in self):
+            return self[key]
+        return None
+
+    def __eq__(self, other):
+        for key in self.__slots__:
+            if (self[key] != other[key]):
+                return False
+        return True
+
+    def __ne__(self, other):
+        for key in self.__slots__:
+            if (self[key] != other[key]):
+                return True
+        return False
+
+    def __len__(self):
+        return len(self.__slots__)
+    
+    def __iter__(self):
+        return iter(self.__slots__)
+    
+    def __contains__(self, key):
+        return (key in self.__slots__)
+
+    def keys(self):
+        return self.__slots__
+
+    def has_key(self, key):
+        return (key in self)
+
+    def items(self):
+        return [(key, self[key]) for key in self.__slots__]
+
+    def iteritems(self):
+        return iter(self.items())
+
+    def iterkeys(self):
+        return self.__iter__()
+
+    def itervalues(self):
+        return iter(self.items())
+
+    def __str__(self):
+        return '{ ' + ', '.join([key + ': ' + str(self[key]) for key in self.__slots__]) + ' }'
+
+
+class Metadata(NamedDict):
+    __slots__ = ('name', 'title', 'asserts', 'credits', 'reviewers', 'flags', 'links', 'references', 'revision', 'selftest')
+
+    def __init__(self, name = None, title = None, asserts = [], credits = [], reviewers = [], flags = [], links = [],
+                 references = [], revision = None, selftest = True):
+        self.name = name
+        self.title = title
+        self.asserts = asserts
+        self.credits = credits
+        self.reviewers = reviewers
+        self.flags = flags
+        self.links = links
+        self.references = references
+        self.revision = revision
+        self.selftest = selftest
+
+    def __getitem__(self, key):
+        if ('name' == key):
+            return self.name
+        if ('title' == key):
+            return self.title
+        if ('asserts' == key):
+            return self.asserts
+        if ('credits' == key):
+            return self.credits
+        if ('reviewers' == key):
+            return self.reviewers
+        if ('flags' == key):
+            return self.flags
+        if ('links' == key):
+            return self.links
+        if ('references' == key):
+            return self.references
+        if ('revision' == key):
+            return self.revision
+        if ('selftest' == key):
+            return self.selftest
+        return None
+
+class ReferenceData(NamedDict):
+    __slots__ = ('name', 'type', 'relpath', 'repopath')
+    
+    def __init__(self, name = None, type = None, relpath = None, repopath = None):
+        self.name = name
+        self.type = type
+        self.relpath = relpath
+        self.repopath = repopath
+
+    def __getitem__(self, key):
+        if ('name' == key):
+            return self.name
+        if ('type' == key):
+            return self.type
+        if ('relpath' == key):
+            return self.relpath
+        if ('repopath' == key):
+            return self.repopath
+        return None
+
+UserData = collections.namedtuple('UserData', ('name', 'link'))
+
+
 class FileSource:
   """Object representing a file. Two FileSources are equal if they represent
      the same file contents. It is recommended to use a SourceCache to generate
@@ -373,7 +486,7 @@ class FileSource:
       seenRefs = {}
       seenRefs[self.sourcepath] = '=='
       def adjustReferences(source):
-        newRefs = dict()
+        newRefs = {}
         for refName in source.refs:
           refType, refPath, refNode, refSource = source.refs[refName]
           if refSource:
@@ -475,31 +588,32 @@ class FileSource:
         if (refSourcePath not in usedRefs):
           usedRefs[refSourcePath] = refType
           if (refSource):
-            references.append({'type': refType, 'relpath': refRelPath, 'repopath': refSourcePath,
-                               'name': self.sourceTree.getAssetName(refSourcePath)})
+            references.append(ReferenceData(name = self.sourceTree.getAssetName(refSourcePath), type = refType,
+                                            relpath = refRelPath, repopath = refSourcePath))
             if ('==' == refType): # XXX don't follow != refs for now (until we export proper ref trees)
               listReferences(refSource)
           else:
-            references.append({'type': refType, 'relpath': relativeURL(self.sourcepath, refSourcePath),
-                               'repopath': refSourcePath,
-                               'name': self.sourceTree.getAssetName(refSourcePath)})
+            references.append(ReferenceData(name = self.sourceTree.getAssetName(refSourcePath), type = refType,
+                                            relpath = relativeURL(self.sourcepath, refSourcePath),
+                                            repopath = refSourcePath))
   
     if (self.refs):
       references = []
       listReferences(self)
 
     if (self.metadata):
-      data = {'asserts'   : [escape(assertion, False) for assertion in self.metadata['asserts']],
-              'credits'   : [(escape(name), encode(link)) for name, link in self.metadata['credits']],
-              'reviewers' : [(escape(name), encode(link)) for name, link in self.metadata['reviewers']],
-              'flags'     : [encode(flag) for flag in self.metadata['flags']],
-              'links'     : [encode(link) for link in self.metadata['links']],
-              'name'      : encode(self.name()),
-              'title'     : escape(self.metadata['title'], False),
-              'references': references,
-              'revision'  : self.revision(),
-              'selftest'  : self.isSelftest()
-             }
+      data = Metadata(
+              name       = encode(self.name()),
+              title      = escape(self.metadata['title'], False),
+              asserts    = [escape(assertion, False) for assertion in self.metadata['asserts']],
+              credits    = [UserData(escape(name), encode(link)) for name, link in self.metadata['credits']],
+              reviewers  = [UserData(escape(name), encode(link)) for name, link in self.metadata['reviewers']],
+              flags      = [encode(flag) for flag in self.metadata['flags']],
+              links      = [encode(link) for link in self.metadata['links']],
+              references = references,
+              revision   = self.revision(),
+              selftest   = self.isSelftest()
+             )
       return data
     return None
 
@@ -671,6 +785,8 @@ xlinkns = '{http://www.w3.org/1999/xlink}'
 
 class XMLSource(FileSource):
   """FileSource object with support reading XML trees."""
+
+  NodeTuple = collections.namedtuple('NodeTuple', ['next', 'prev', 'reference', 'notReference'])
 
   # Public Data
   syntaxErrorDoc = \
@@ -915,8 +1031,7 @@ class XMLSource(FileSource):
        reference = self.injectMetadataLink('match', self.relativeURL(reference), 'ref')
      if notReference:
        notReference = self.injectMetadataLink('mismatch', self.relativeURL(notReference), 'not-ref')
-     NodeTuple = collections.namedtuple('NodeTuple', ['next', 'prev', 'reference', 'notReference'])
-     return NodeTuple(next, prev, reference, notReference)
+     return self.NodeTuple(next, prev, reference, notReference)
 
 
 class XHTMLSource(XMLSource):
