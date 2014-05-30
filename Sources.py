@@ -326,6 +326,12 @@ class NamedDict(object):
     def __contains__(self, key):
         return (key in self.__slots__)
 
+    def copy(self):
+        clone = self.__class__()
+        for key in self.__slots__:
+            clone[key] = self[key]
+        return clone
+    
     def keys(self):
         return self.__slots__
 
@@ -386,6 +392,29 @@ class Metadata(NamedDict):
         if ('selftest' == key):
             return self.selftest
         return None
+    
+    def __setitem__(self, key, value):
+        if ('name' == key):
+            self.name = value
+        elif ('title' == key):
+            self.title = value
+        elif ('asserts' == key):
+            self.asserts = value
+        elif ('credits' == key):
+            self.credits = value
+        elif ('reviewers' == key):
+            self.reviewers = value
+        elif ('flags' == key):
+            self.flags = value
+        elif ('links' == key):
+            self.links = value
+        elif ('references' == key):
+            self.references = value
+        elif ('revision' == key):
+            self.revision = value
+        elif ('selftest' == key):
+            self.selftest = value
+
 
 class ReferenceData(NamedDict):
     __slots__ = ('name', 'type', 'relpath', 'repopath')
@@ -406,6 +435,16 @@ class ReferenceData(NamedDict):
         if ('repopath' == key):
             return self.repopath
         return None
+
+    def __setitem__(self, key, value):
+        if ('name' == key):
+            self.name = value
+        elif ('type' == key):
+            self.type = value
+        elif ('relpath' == key):
+            self.relpath = value
+        elif ('repopath' == key):
+            self.repopath = value
 
 UserData = collections.namedtuple('UserData', ('name', 'link'))
 
