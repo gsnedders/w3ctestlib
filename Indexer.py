@@ -100,7 +100,7 @@ class Indexer:
     for test in group.iterTests():
       data = test.getMetadata()
       if data: # Shallow copy for template output
-        data = data.copy()
+        data = dict(data)
         data['links'] = [link for link in data['links']
                          if (link.find(self.suite.specroot) > -1) or
                             (link.find(self.suite.draftroot) > -1)]

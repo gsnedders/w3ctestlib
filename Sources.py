@@ -414,6 +414,8 @@ class Metadata(NamedDict):
             self.revision = value
         elif ('selftest' == key):
             self.selftest = value
+        else:
+            raise KeyError()
 
 
 class ReferenceData(NamedDict):
@@ -445,6 +447,8 @@ class ReferenceData(NamedDict):
             self.relpath = value
         elif ('repopath' == key):
             self.repopath = value
+        else:
+            raise KeyError()
 
 UserData = collections.namedtuple('UserData', ('name', 'link'))
 
