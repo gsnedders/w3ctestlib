@@ -16,16 +16,16 @@ from html5lib import treebuilders, inputstream
 from lxml import etree
 from lxml.etree import ParseError
 from Utils import getMimeFromExt, escapeToNamedASCII, basepath, isPathInsideBase, relativeURL, assetName
-from mercurial import ui, hg
 import HTMLSerializer
 import warnings
+import hashlib
 
 class SourceTree(object):
   """Class that manages structure of test repository source.
      Temporarily hard-coded path and filename rules, this should be configurable.
   """
 
-  def __init__(self, repository):
+  def __init__(self, repository = None):
     self.mTestExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml', '.svg']
     self.mReferenceExtensions = ['.xht', '.html', '.xhtml', '.htm', '.xml', '.png', '.svg']
     self.mRepository = repository
@@ -163,7 +163,7 @@ class SourceCache:
     self.__cache = {}
     self.sourceTree = sourceTree
 
-  def generateSource(self, sourcepath, relpath, changeCtx=None):
+  def generateSource(self, sourcepath, relpath, data = None):
     """Return a FileSource or derivative based on the extensionMap.
 
        Uses a cache to avoid creating more than one of the same object:
@@ -172,25 +172,25 @@ class SourceCache:
        
        Cache is bypassed if loading form a change context
     """
-    if ((None == changeCtx) and self.__cache.has_key(sourcepath)):
+    if ((None == data) and self.__cache.has_key(sourcepath)):
       source = self.__cache[sourcepath]
       assert relpath == source.relpath
       return source
 
     if basename(sourcepath) == '.htaccess':
-      return ConfigSource(self.sourceTree, sourcepath, relpath, changeCtx)
+      return ConfigSource(self.sourceTree, sourcepath, relpath, data)
     mime = getMimeFromExt(sourcepath)
     if (mime == 'application/xhtml+xml'):
-      source = XHTMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
+      source = XHTMLSource(self.sourceTree, sourcepath, relpath, data)
     elif (mime == 'text/html'):
-      source = HTMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
+      source = HTMLSource(self.sourceTree, sourcepath, relpath, data)
     elif (mime == 'image/svg+xml'):
-      source = SVGSource(self.sourceTree, sourcepath, relpath, changeCtx)
+      source = SVGSource(self.sourceTree, sourcepath, relpath, data)
     elif (mime == 'application/xml'):
-      source = XMLSource(self.sourceTree, sourcepath, relpath, changeCtx)
+      source = XMLSource(self.sourceTree, sourcepath, relpath, data)
     else:
-      source = FileSource(self.sourceTree, sourcepath, relpath, mime, changeCtx)
-    if (None == changeCtx):
+      source = FileSource(self.sourceTree, sourcepath, relpath, mime, data)
+    if (None == data):
       self.__cache[sourcepath] = source
     return source
 
@@ -295,9 +295,6 @@ class StringReader(object):
         return self.mString
     return ''
 
-
-class SourceMetaError(Exception):
-  pass
 
 class NamedDict(object):
     def get(self, key):
@@ -452,6 +449,15 @@ class ReferenceData(NamedDict):
 
 UserData = collections.namedtuple('UserData', ('name', 'link'))
 
+class LineString(str):
+    def __new__(cls, value, line):
+        self = str.__new__(cls, value)
+        self.line = line
+        return self
+
+    def __str__(self):
+        return 'Line ' + str(self.line) + ': ' + str.__str__(self) if (self.line) else str.__str__(self)
+
 
 class FileSource:
   """Object representing a file. Two FileSources are equal if they represent
@@ -459,22 +465,22 @@ class FileSource:
      FileSources.
   """
 
-  def __init__(self, sourceTree, sourcepath, relpath, mimetype=None, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, mimetype = None, data = None):
     """Init FileSource from source path. Give it relative path relpath.
 
        `mimetype` should be the canonical MIME type for the file, if known.
         If `mimetype` is None, guess type from file extension, defaulting to
         the None key's value in extensionMap.
         
-       `changeCtx` if provided, is a mercurial change context. When present,
-        all file reads will be done from the change context instead.
+       `data` if provided, is a the contents of the file. Otherwise the file is read
+        from disk.
     """
     self.sourceTree = sourceTree
     self.sourcepath = sourcepath
     self.relpath    = relpath
     self.mimetype   = mimetype or getMimeFromExt(sourcepath)
-    self.changeCtx  = changeCtx
-    self.error      = None
+    self._data      = data
+    self.errors     = None
     self.encoding   = 'utf-8'
     self.refs       = {}
     self.metadata   = None
@@ -500,13 +506,11 @@ class FileSource:
     
   def data(self):
     """Return file contents as a byte string."""
-    if (self.changeCtx):
-      data = self.changeCtx.filectx(self.sourcepath).data()
-    else:
-      data = open(self.sourcepath, 'r').read()
-    if (data.startswith(codecs.BOM_UTF8)):
+    if (not self._data):
+      self._data = open(self.sourcepath, 'r').read()
+    if (self._data.startswith(codecs.BOM_UTF8)):
       self.encoding = 'utf-8-sig' # XXX look for other unicode BOMs
-    return data
+    return self._data
     
   def unicode(self):
     try:
@@ -557,28 +561,21 @@ class FileSource:
     """Clears all cached data, preserves computed data."""
     pass
 
-  def revisionOf(self, path, relpath=None):
-    """Get last committed mercurial revision of file.
-       Accepts optional relative path to target.
-    """
-    if relpath:
-      path = os.path.join(os.path.dirname(path), relpath)
-    repo = self.sourceTree.mRepository
-    fctx = repo.filectx(path, fileid = repo.file(path).tip())
-    return fctx.rev() + 1   # svn starts at 1, hg starts at 0 - XXX return revision number for now, eventually switch to changeset id and date
-
   def revision(self):
-    """Returns svn revision number of last commit to this file or any related file, references, support files, etc.
+    """Returns hash of the contetns of this file and any related file, references, support files, etc.
        XXX also needs to account for .meta file
     """
-    revision = self.revisionOf(self.sourcepath)
-    for refName in self.refs:
-      refSource = self.refs[refName][3]
-      refPath = refSource.relpath if (refSource) else self.refs[refName][1]
-      refRevision = self.revisionOf(self.sourcepath, refPath) # XXX also follow reference chains
-      if revision < refRevision:
-        revision = refRevision
-    return revision
+    sha = hashlib.sha1()
+    sha.update(self.data())
+    seenRefs = set(self.sourcepath)
+    def hashReference(source):
+        for refName in source.refs:
+            refSource = source.refs[refName][3]
+            if (refSource and (refSource.sourcepath not in seenRefs)):
+                sha.update(refSource.data())
+                seenRefs.add(refSource.sourcepath)
+                hashReference(refSource)
+    return sha.hexdigest()
 
   def loadMetadata(self):
     """Look for .meta file and load any metadata from it if present
@@ -592,8 +589,8 @@ class FileSource:
     
   # See http://wiki.csswg.org/test/css2.1/format for more info on metadata
   def getMetadata(self, asUnicode = False):
-    """Return dictionary of test metadata. Returns None and stores error
-       exception in self.error if there is a parse or metadata error.
+    """Return dictionary of test metadata. Stores list of errors
+       in self.errors if there are parse or metadata errors.
        Data fields include:
          - asserts [list of strings]
          - credits [list of (name string, url string) tuples]
@@ -610,11 +607,8 @@ class FileSource:
     
     self.validate()
 
-    if self.error:
-      return None
-
     def encode(str):
-      return intern(str.encode('utf-8'))
+        return str if (hasattr(str, 'line')) else intern(str.encode('utf-8'))
 
     def escape(str, andIntern = True):
       return str.encode('utf-8') if asUnicode else intern(escapeToNamedASCII(str)) if andIntern else escapeToNamedASCII(str)
@@ -712,10 +706,10 @@ class ConfigSource(FileSource):
      Capable of merging multiple config-file contents.
   """
 
-  def __init__(self, sourceTree, sourcepath, relpath, mimetype=None, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, mimetype = None, data = None):
     """Init ConfigSource from source path. Give it relative path relpath.
     """
-    FileSource.__init__(self, sourceTree, sourcepath, relpath, mimetype, changeCtx)
+    FileSource.__init__(self, sourceTree, sourcepath, relpath, mimetype, data)
     self.sourcepath = [sourcepath]
 
   def __eq__(self, other):
@@ -763,11 +757,11 @@ class ReftestManifest(ConfigSource):
      Iterating the ReftestManifest returns (testpath, refpath) tuples
      with paths relative to the manifest.
   """
-  def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, data = None):
     """Init ReftestManifest from source path. Give it relative path `relpath`
        and load its .htaccess file.
     """
-    ConfigSource.__init__(self, sourceTree, sourcepath, relpath, mimetype = 'config/reftest', changeCtx = changeCtx)
+    ConfigSource.__init__(self, sourceTree, sourcepath, relpath, mimetype = 'config/reftest', data = data)
 
   def basepath(self):
     """Returns the base relpath of this reftest manifest path, i.e.
@@ -855,12 +849,12 @@ class XMLSource(FileSource):
 
   # Public Methods
 
-  def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, data = None):
     """Initialize XMLSource by loading from XML file `sourcepath`.
-      Parse errors are reported as caught exceptions in `self.error`,
+      Parse errors are reported in `self.errors`,
       and the source is replaced with an XHTML error message.
     """
-    FileSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
+    FileSource.__init__(self, sourceTree, sourcepath, relpath, data = data)
     self.tree = None
     self.injectedTags = {}
 
@@ -871,8 +865,8 @@ class XMLSource(FileSource):
       self.tree = etree.parse(StringIO(errorDoc), parser=self.__parser)
 
   def parse(self):
-    """Parse file and store any parse errors in self.error"""
-    self.error = False
+    """Parse file and store any parse errors in self.errors"""
+    self.errors = None
     try:
       data = self.data()
       if (data):
@@ -881,21 +875,21 @@ class XMLSource(FileSource):
         self.injectedTags = {}
       else:
         self.tree = None
-        self.error = 'Empty source file'
+        self.errors = ['Empty source file']
         self.encoding = 'utf-8'
 
       FileSource.loadMetadata(self)
-      if ((not self.metadata) and self.tree and (not self.error)):
+      if ((not self.metadata) and self.tree and (not self.errors)):
         self.extractMetadata(self.tree)
     except etree.ParseError as e:
       print "PARSE ERROR: " + self.sourcepath
       self.cacheAsParseError(self.sourcepath, e)
       e.W3CTestLibErrorLocation = self.sourcepath
-      self.error = e
+      self.errors = [str(e)]
       self.encoding = 'utf-8'
       
   def validate(self):
-    """Parse file if not parsed, and store any parse errors in self.error"""
+    """Parse file if not parsed, and store any parse errors in self.errors"""
     if self.tree is None:
       self.parse()
 
@@ -963,102 +957,121 @@ class XMLSource(FileSource):
 
   def extractMetadata(self, tree):
     """Extract metadata from tree."""
-    links = []; credits = []; reviewers = []; flags = []; asserts = [];
-    self.metadata = {'asserts'   : asserts,
-                     'credits'   : credits,
-                     'reviewers' : reviewers,
-                     'flags'     : flags,
-                     'links'     : links,
-                     'title'     : ''
-                    }
+    links = []; credits = []; reviewers = []; flags = []; asserts = []; title = ''
 
     def tokenMatch(token, string):
-      if not string: return False
-      return bool(re.search('(^|\s+)%s($|\s+)' % token, string))
+        return bool(re.search('(^|\s+)%s($|\s+)' % token, string)) if (string) else False
 
+    errors = []
     readFlags = False
     metaElements = self.getMetadataElements(tree)
-    try:
-      if (metaElements == None): raise SourceMetaError("Missing <head> element")
-      # Scan and cache metadata
-      for node in metaElements:
-        if (node.tag == xhtmlns+'link'):
-          # help links
-          if tokenMatch('help', node.get('rel')):
-            link = node.get('href').strip() if node.get('href') else None
-            if not link:
-              raise SourceMetaError("Help link missing href value.")
-            if not (link.startswith('http://') or link.startswith('https://')):
-              raise SourceMetaError("Help link must be absolute URL.")
-            links.append(link)
-          # == references
-          elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
-            refPath = node.get('href').strip() if node.get('href') else None
-            if not refPath:
-              raise SourceMetaError("Reference link missing href value.")
-            refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
-            if (refName in self.refs):
-              raise SourceMetaError("Reference already specified.")
-            self.refs[refName] = ('==', refPath, node, None)
-          # != references
-          elif tokenMatch('mismatch', node.get('rel')) or tokenMatch('not-reference', node.get('rel')):
-            refPath = node.get('href').strip() if node.get('href') else None
-            if not refPath:
-              raise SourceMetaError("Reference link missing href value.")
-            refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
-            if (refName in self.refs):
-              raise SourceMetaError("Reference already specified.")
-            self.refs[refName] = ('!=', refPath, node, None)
-          else: # may have both author and reviewer in the same link
-            # credits
-            if tokenMatch('author', node.get('rel')):
-              name = node.get('title')
-              name = name.strip() if name else name
-              if not name:
-                raise SourceMetaError("Author link missing name (title attribute).")
-              link = node.get('href').strip() if node.get('href') else None
-              if not link:
-                raise SourceMetaError("Author link missing contact URL (http or mailto).")
-              credits.append((name, link))
-            # reviewers
-            if tokenMatch('reviewer', node.get('rel')):
-              name = node.get('title')
-              name = name.strip() if name else name
-              if not name:
-                raise SourceMetaError("Reviewer link missing name (title attribute).")
-              link = node.get('href').strip() if node.get('href') else None
-              if not link:
-                raise SourceMetaError("Reviewer link missing contact URL (http or mailto).")
-              reviewers.append((name, link))
-        elif node.tag == xhtmlns+'meta':
-          metatype = node.get('name')
-          metatype = metatype.strip() if metatype else metatype
-          # requirement flags
-          if metatype == 'flags':
-            if readFlags:
-              raise SourceMetaError("Flags must only be specified once.")
-            readFlags = True
-            if (None == node.get('content')):
-              raise SourceMetaError("Flags meta missing content attribute.")
-            for flag in sorted(node.get('content').split()):
-              flags.append(flag)
-          # test assertions
-          elif metatype == 'assert':
-            if (None == node.get('content')):
-              raise SourceMetaError("Assert meta missing content attribute.")
-            asserts.append(node.get('content').strip().replace('\t', ' '))
-        # test title
-        elif node.tag == xhtmlns+'title':
-          title = node.text.strip() if node.text else ''
-          match = re.match('(?:[^:]*)[tT]est(?:[^:]*):(.*)', title, re.DOTALL)
-          if (match):
-            title = match.group(1)
-          self.metadata['title'] = title.strip()
+    if (not metaElements):
+        errors.append("Missing <head> element")
+    else:
+        # Scan and cache metadata
+        for node in metaElements:
+            if (node.tag == xhtmlns+'link'):
+                # help links
+                if tokenMatch('help', node.get('rel')):
+                    link = node.get('href').strip() if node.get('href') else None
+                    if (not link):
+                        errors.append(LineString("Help link missing href value.", node.sourceline))
+                    elif (not (link.startswith('http://') or link.startswith('https://'))):
+                        errors.append(LineString("Help link " + link + " must be absolute URL.", node.sourceline))
+                    elif (link in links):
+                        errors.append(LineString("Duplicate help link " + link + ".", node.sourceline))
+                    else:
+                        links.append(LineString(link, node.sourceline))
+                # == references
+                elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
+                    refPath = node.get('href').strip() if node.get('href') else None
+                    if (not refPath):
+                        errors.append(LineString("Reference link missing href value.", node.sourceline))
+                    else:
+                        refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
+                        if (refName in self.refs):
+                            errors.append(LineString("Reference " + refName + " already specified.", node.sourceline))
+                        else:
+                            self.refs[refName] = ('==', refPath, node, None)
+                # != references
+                elif tokenMatch('mismatch', node.get('rel')) or tokenMatch('not-reference', node.get('rel')):
+                    refPath = node.get('href').strip() if node.get('href') else None
+                    if (not refPath):
+                        errors.append(LineString("Reference link missing href value.", node.sourceline))
+                    else:
+                        refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
+                        if (refName in self.refs):
+                            errors.append(LineString("Reference " + refName + " already specified.", node.sourceline))
+                        else:
+                            self.refs[refName] = ('!=', refPath, node, None)
+                else: # may have both author and reviewer in the same link
+                    # credits
+                    if tokenMatch('author', node.get('rel')):
+                        name = node.get('title')
+                        name = name.strip() if name else name
+                        if (not name):
+                            errors.append(LineString("Author link missing name (title attribute).", node.sourceline))
+                        else:
+                            link = node.get('href').strip() if node.get('href') else None
+                            if (not link):
+                                errors.append(LineString("Author link for \"" + name + "\" missing contact URL (http or mailto).", node.sourceline))
+                            else:
+                                credits.append((name, link))
+                    # reviewers
+                    if tokenMatch('reviewer', node.get('rel')):
+                        name = node.get('title')
+                        name = name.strip() if name else name
+                        if (not name):
+                            errors.append(LineString("Reviewer link missing name (title attribute).", node.sourceline))
+                        else:
+                            link = node.get('href').strip() if node.get('href') else None
+                            if (not link):
+                                errors.append(LineString("Reviewer link for \"" + name + "\" missing contact URL (http or mailto).", node.sourceline))
+                            else:
+                                reviewers.append((name, link))
+            elif (node.tag == xhtmlns+'meta'):
+                metatype = node.get('name')
+                metatype = metatype.strip() if metatype else metatype
+                # requirement flags
+                if ('flags' == metatype):
+                    if (readFlags):
+                        errors.append(LineString("Flags must only be specified once.", node.sourceline))
+                    else:
+                        readFlags = True
+                        if (None == node.get('content')):
+                            errors.append(LineString("Flags meta missing content attribute.", node.sourceline))
+                        else:
+                            for flag in sorted(node.get('content').split()):
+                                flags.append(flag)
+                # test assertions
+                elif ('assert' == metatype):
+                    if (None == node.get('content')):
+                        errors.append(LineString("Assert meta missing content attribute.", node.sourceline))
+                    else:
+                        asserts.append(node.get('content').strip().replace('\t', ' '))
+            # title
+            elif (node.tag == xhtmlns+'title'):
+                title = node.text.strip() if node.text else ''
+                match = re.match('(?:[^:]*)[tT]est(?:[^:]*):(.*)', title, re.DOTALL)
+                if (match):
+                    title = match.group(1)
+                title = title.strip()
 
-    # Cache error and return
-    except SourceMetaError as e:
-      e.W3CTestLibErrorLocation = self.sourcepath
-      self.error = e
+    if (asserts or credits or reviewers or flags or links or title):
+        self.metadata = {'asserts'   : asserts,
+                         'credits'   : credits,
+                         'reviewers' : reviewers,
+                         'flags'     : flags,
+                         'links'     : links,
+                         'title'     : title
+                        }
+
+    if (errors):
+        if (self.errors):
+            self.errors += errors
+        else:
+            self.errors = errors
+
 
   def augmentMetadata(self, next=None, prev=None, reference=None, notReference=None):
      """Add extra useful metadata to the head. All arguments are optional.
@@ -1082,12 +1095,12 @@ class XHTMLSource(XMLSource):
 
   # Public Methods
 
-  def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, data = None):
     """Initialize XHTMLSource by loading from XHTML file `sourcepath`.
-      Parse errors are reported as caught exceptions in `self.error`,
+      Parse errors are stored in `self.errors`,
       and the source is replaced with an XHTML error message.
     """
-    XMLSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
+    XMLSource.__init__(self, sourceTree, sourcepath, relpath, data = data)
 
   def serializeXHTML(self, doctype = None):
     return self.serializeXML()
@@ -1104,12 +1117,12 @@ class XHTMLSource(XMLSource):
 class SVGSource(XMLSource):
   """FileSource object with support for extracting metadata from SVG."""
   
-  def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, data = None):
     """Initialize SVGSource by loading from SVG file `sourcepath`.
-      Parse errors are reported as caught exceptions in `self.error`,
+      Parse errors are stored in `self.errors`,
       and the source is replaced with an XHTML error message.
     """
-    XMLSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
+    XMLSource.__init__(self, sourceTree, sourcepath, relpath, data = data)
 
   def getMeatdataContainer(self):
     groups = self.tree.getroot().findall(svgns+'g')
@@ -1120,135 +1133,122 @@ class SVGSource(XMLSource):
 
   def extractMetadata(self, tree):
     """Extract metadata from tree."""
-    links = []; credits = []; reviewers = []; flags = []; asserts = [];
-    self.metadata = {'asserts'   : asserts,
-                     'credits'   : credits,
-                     'reviewers' : reviewers,
-                     'flags'     : flags,
-                     'links'     : links,
-                     'title'     : ''
-                    }
+    links = []; credits = []; reviewers = []; flags = []; asserts = []; title = ''
 
     def tokenMatch(token, string):
-      if not string: return False
-      return bool(re.search('(^|\s+)%s($|\s+)' % token, string))
+        return bool(re.search('(^|\s+)%s($|\s+)' % token, string)) if (string) else False
 
+    errors = []
     readFlags = False
     metaElements = self.getMetadataElements(tree)
-    try:
-      if (metaElements == None): raise SourceMetaError("Missing <g id='testmeta'> element")
-      # Scan and cache metadata
-      for node in metaElements:
-        if (node.tag == xhtmlns+'link'):
-          # help links
-          if tokenMatch('help', node.get('rel')):
-            link = node.get('href').strip() if node.get('href') else None
-            if not link:
-              raise SourceMetaError("Help link missing href value.")
-            if not (link.startswith('http://') or link.startswith('https://')):
-              raise SourceMetaError("Help link must be absolute URL.")
-            links.append(link)
-          # == references
-          elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
-            refPath = node.get('href').strip() if node.get('href') else None
-            if not refPath:
-              raise SourceMetaError("Reference link missing href value.")
-            refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
-            if (refName in self.refs):
-              raise SourceMetaError("Reference already specified.")
-            self.refs[refName] = ('==', refPath, node, None)
-          # != references
-          elif tokenMatch('mismatch', node.get('rel')) or tokenMatch('not-reference', node.get('rel')):
-            refPath = node.get('href').strip() if node.get('href') else None
-            if not refPath:
-              raise SourceMetaError("Reference link missing href value.")
-            refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
-            if (refName in self.refs):
-              raise SourceMetaError("Reference already specified.")
-            self.refs[refName] = ('!=', refPath, node, None)
-          else: # may have both author and reviewer in the same link
-            # credits
-            if tokenMatch('author', node.get('rel')):
-              name = node.get('title')
-              name = name.strip() if name else name
-              if not name:
-                raise SourceMetaError("Author link missing name (title attribute).")
-              link = node.get('href').strip() if node.get('href') else None
-              if not link:
-                raise SourceMetaError("Author link missing contact URL (http or mailto).")
-              credits.append((name, link))
-            # reviewers
-            if tokenMatch('reviewer', node.get('rel')):
-              name = node.get('title')
-              name = name.strip() if name else name
-              if not name:
-                raise SourceMetaError("Reviewer link missing name (title attribute).")
-              link = node.get('href').strip() if node.get('href') else None
-              if not link:
-                raise SourceMetaError("Reviewer link missing contact URL (http or mailto).")
-              reviewers.append((name, link))
-        elif node.tag == svgns+'metadata':
-          metatype = node.get('class')
-          metatype = metatype.strip() if metatype else metatype
-          # requirement flags
-          if metatype == 'flags':
-            if readFlags:
-              raise SourceMetaError("Flags must only be specified once.")
-            readFlags = True
-            text = node.find(svgns+'text')
-            flagString = text.text if (text) else node.text
-            if (flagString):
-              for flag in sorted(flagString.split()):
-                flags.append(flag)
-        elif node.tag == svgns+'desc':
-          metatype = node.get('class')
-          metatype = metatype.strip() if metatype else metatype
-          # test assertions
-          if metatype == 'assert':
-            asserts.append(node.text.strip().replace('\t', ' '))
-        # test title
-        elif node.tag == svgns+'title':
-          title = node.text.strip() if node.text else ''
-          match = re.match('(?:[^:]*)[tT]est(?:[^:]*):(.*)', title, re.DOTALL)
-          if (match):
-            title = match.group(1)
-          self.metadata['title'] = title.strip()
+    if (not metaElements):
+        errors.append("Missing <g id='testmeta'> element")
+    else:
+        # Scan and cache metadata
+        for node in metaElements:
+            if (node.tag == xhtmlns+'link'):
+                # help links
+                if tokenMatch('help', node.get('rel')):
+                    link = node.get('href').strip() if node.get('href') else None
+                    if (not link):
+                        errors.append(LineString("Help link missing href value.", node.sourceline))
+                    elif (not (link.startswith('http://') or link.startswith('https://'))):
+                        errors.append(LineString("Help link " + link + " must be absolute URL.", node.sourceline))
+                    elif (link in links):
+                        errors.append(LineString("Duplicate help link " + link + ".", node.sourceline))
+                    else:
+                        links.append(LineString(link, node.sourceline))
+                # == references
+                elif tokenMatch('match', node.get('rel')) or tokenMatch('reference', node.get('rel')):
+                    refPath = node.get('href').strip() if node.get('href') else None
+                    if (not refPath):
+                        errors.append(LineString("Reference link missing href value.", node.sourceline))
+                    else:
+                        refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
+                        if (refName in self.refs):
+                            errors.append(LineString("Reference " + refName + " already specified.", node.sourceline))
+                        else:
+                            self.refs[refName] = ('==', refPath, node, None)
+                # != references
+                elif tokenMatch('mismatch', node.get('rel')) or tokenMatch('not-reference', node.get('rel')):
+                    refPath = node.get('href').strip() if node.get('href') else None
+                    if (not refPath):
+                        errors.append(LineString("Reference link missing href value.", node.sourceline))
+                    else:
+                        refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
+                        if (refName in self.refs):
+                            errors.append(LineString("Reference " + refName + " already specified.", node.sourceline))
+                        else:
+                            self.refs[refName] = ('!=', refPath, node, None)
+                else: # may have both author and reviewer in the same link
+                    # credits
+                    if tokenMatch('author', node.get('rel')):
+                        name = node.get('title')
+                        name = name.strip() if name else name
+                        if (not name):
+                            errors.append(LineString("Author link missing name (title attribute).", node.sourceline))
+                        else:
+                            link = node.get('href').strip() if node.get('href') else None
+                            if (not link):
+                                errors.append(LineString("Author link for \"" + name + "\" missing contact URL (http or mailto).", node.sourceline))
+                            else:
+                                credits.append((name, link))
+                    # reviewers
+                    if tokenMatch('reviewer', node.get('rel')):
+                        name = node.get('title')
+                        name = name.strip() if name else name
+                        if (not name):
+                            errors.append(LineString("Reviewer link missing name (title attribute).", node.sourceline))
+                        else:
+                            link = node.get('href').strip() if node.get('href') else None
+                            if (not link):
+                                errors.append(LineString("Reviewer link for \"" + name + "\" missing contact URL (http or mailto).", node.sourceline))
+                            else:
+                                reviewers.append((name, link))
+            elif (node.tag == svgns+'metadata'):
+                metatype = node.get('class')
+                metatype = metatype.strip() if metatype else metatype
+                # requirement flags
+                if ('flags' == metatype):
+                    if (readFlags):
+                        errors.append(LineString("Flags must only be specified once.", node.sourceline))
+                    else:
+                        readFlags = True
+                        text = node.find(svgns+'text')
+                        flagString = text.text if (text) else node.text
+                        if (flagString):
+                            for flag in sorted(flagString.split()):
+                                flags.append(flag)
+            elif (node.tag == svgns+'desc'):
+                metatype = node.get('class')
+                metatype = metatype.strip() if metatype else metatype
+                # test assertions
+                if ('assert' == metatype):
+                    asserts.append(node.text.strip().replace('\t', ' '))
+            # test title
+            elif node.tag == svgns+'title':
+                title = node.text.strip() if node.text else ''
+                match = re.match('(?:[^:]*)[tT]est(?:[^:]*):(.*)', title, re.DOTALL)
+                if (match):
+                    title = match.group(1)
+                self.metadata['title'] = title.strip()
 
-    # Cache error and return
-    except SourceMetaError as e:
-      e.W3CTestLibErrorLocation = self.sourcepath
-      self.error = e
+    if (asserts or credits or reviewers or flags or links or title):
+        self.metadata = {'asserts'   : asserts,
+                         'credits'   : credits,
+                         'reviewers' : reviewers,
+                         'flags'     : flags,
+                         'links'     : links,
+                         'title'     : title
+                        }
+    if (errors):
+        if (self.errors):
+            self.errors += errors
+        else:
+            self.errors = errors
 
 
-class NodeWrapper(object):
-  """Wrapper object for dom nodes to give them an etree-like api
-  """
-  
-  def __init__(self, node):
-    self.node = node
-    self.tag = xhtmlns + self.node.tagName
-    self.text = ''
-    child = node.firstChild
-    while (None != child):
-      if (child.nodeType == dom.Node.TEXT_NODE):
-        self.text += child.data
-      child = child.nextSibling
-    
-  def getparent(self):
-    return NodeWrapper(self.node.parentNode)
-    
-  def remove(self, child):
-    self.node.removeChild(child.node)
-    
-  def get(self, attr):
-    if (self.node.hasAttribute(attr)):
-      return self.node.getAttribute(attr)
-    return None
-    
-  def set(self, attr, value):
-    self.node.setAttribute(attr, value)
-  
-  
+
 class HTMLSource(XMLSource):
   """FileSource object with support for HTML metadata and HTML->XHTML conversions (untested)."""
 
@@ -1257,14 +1257,14 @@ class HTMLSource(XMLSource):
  
   # Public Methods
 
-  def __init__(self, sourceTree, sourcepath, relpath, changeCtx=None):
+  def __init__(self, sourceTree, sourcepath, relpath, data = None):
     """Initialize HTMLSource by loading from HTML file `sourcepath`.
     """
-    XMLSource.__init__(self, sourceTree, sourcepath, relpath, changeCtx = changeCtx)
+    XMLSource.__init__(self, sourceTree, sourcepath, relpath, data = data)
 
   def parse(self):
-    """Parse file and store any parse errors in self.error"""
-    self.error = False
+    """Parse file and store any parse errors in self.errors"""
+    self.errors = None
     try:
       data = self.data()
       if data:
@@ -1277,16 +1277,16 @@ class HTMLSource(XMLSource):
           self.injectedTags = {}
       else:
         self.tree = None
-        self.error = 'Empty source file'
+        self.errors = ['Empty source file']
         self.encoding = 'utf-8'
 
       FileSource.loadMetadata(self)
-      if ((not self.metadata) and self.tree and (not self.error)):
+      if ((not self.metadata) and self.tree and (not self.errors)):
         self.extractMetadata(self.tree)
     except Exception as e:
       print "PARSE ERROR: " + self.sourcepath
       e.W3CTestLibErrorLocation = self.sourcepath
-      self.error = e
+      self.errors = [str(e)]
       self.encoding = 'utf-8'
 
   def _injectXLinks(self, element, nodeList):

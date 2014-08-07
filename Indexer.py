@@ -92,7 +92,7 @@ class Indexer:
     self.flags = flags
 
     # Initialize storage
-    self.errors = set()
+    self.errors = {}
     self.contributors = {}
     self.alltests = []
 
@@ -114,7 +114,7 @@ class Indexer:
         for credit in data['credits']:
           self.contributors[credit[0]] = credit[1]
       else:
-        self.errors.add(test.error)
+        self.errors[test.sourcepath] = test.errors
 
   def __writeTemplate(self, template, data, outfile):
     o = self.tt.process(template, data)
@@ -162,15 +162,15 @@ class Indexer:
       self.__writeTemplate(tmpl, data, join(destDir, out))
 
     # Report errors
-    errors = sorted(self.errors)
-    if type(errorOut) is type(('tmpl','out')):
-      data['errors'] = errors
-      self.__writeTemplate(errorOut[0], data, join(destDir, errorOut[1]))
-    else:
-      sys.stdout.flush()
-      for error in errors:
-        print >> errorOut, "Error in %s: %s" % \
-                           (error.W3CTestLibErrorLocation, error)
+    if (self.errors):
+        if type(errorOut) is type(('tmpl','out')):
+            data['errors'] = errors
+            self.__writeTemplate(errorOut[0], data, join(destDir, errorOut[1]))
+        else:
+            sys.stdout.flush()
+            for errorLocation in self.errors:
+                print >> errorOut, "Error in %s: %s" % \
+                               (errorLocation, ' '.join([str(error) for error in self.errors[errorLocation]]))
 
   def writeIndex(self, format):
     """Write indices into test suite build output through format `format`.
