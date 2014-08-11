@@ -455,7 +455,7 @@ class LineString(str):
         self.line = line
         return self
 
-    def __str__(self):
+    def lineValue(self):
         return 'Line ' + str(self.line) + ': ' + str.__str__(self) if (self.line) else str.__str__(self)
 
 
@@ -977,9 +977,9 @@ class XMLSource(FileSource):
                     if (not link):
                         errors.append(LineString("Help link missing href value.", node.sourceline))
                     elif (not (link.startswith('http://') or link.startswith('https://'))):
-                        errors.append(LineString("Help link " + link + " must be absolute URL.", node.sourceline))
+                        errors.append(LineString("Help link " + link.encode('utf-8') + " must be absolute URL.", node.sourceline))
                     elif (link in links):
-                        errors.append(LineString("Duplicate help link " + link + ".", node.sourceline))
+                        errors.append(LineString("Duplicate help link " + link.encode('utf-8') + ".", node.sourceline))
                     else:
                         links.append(LineString(link, node.sourceline))
                 # == references
@@ -990,7 +990,7 @@ class XMLSource(FileSource):
                     else:
                         refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
                         if (refName in self.refs):
-                            errors.append(LineString("Reference " + refName + " already specified.", node.sourceline))
+                            errors.append(LineString("Reference " + refName.encode('utf-8') + " already specified.", node.sourceline))
                         else:
                             self.refs[refName] = ('==', refPath, node, None)
                 # != references
@@ -1001,7 +1001,7 @@ class XMLSource(FileSource):
                     else:
                         refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
                         if (refName in self.refs):
-                            errors.append(LineString("Reference " + refName + " already specified.", node.sourceline))
+                            errors.append(LineString("Reference " + refName.encode('utf-8') + " already specified.", node.sourceline))
                         else:
                             self.refs[refName] = ('!=', refPath, node, None)
                 else: # may have both author and reviewer in the same link
@@ -1014,7 +1014,7 @@ class XMLSource(FileSource):
                         else:
                             link = node.get('href').strip() if node.get('href') else None
                             if (not link):
-                                errors.append(LineString("Author link for \"" + name + "\" missing contact URL (http or mailto).", node.sourceline))
+                                errors.append(LineString("Author link for \"" + name.encode('utf-8') + "\" missing contact URL (http or mailto).", node.sourceline))
                             else:
                                 credits.append((name, link))
                     # reviewers
@@ -1026,7 +1026,7 @@ class XMLSource(FileSource):
                         else:
                             link = node.get('href').strip() if node.get('href') else None
                             if (not link):
-                                errors.append(LineString("Reviewer link for \"" + name + "\" missing contact URL (http or mailto).", node.sourceline))
+                                errors.append(LineString("Reviewer link for \"" + name.encode('utf-8') + "\" missing contact URL (http or mailto).", node.sourceline))
                             else:
                                 reviewers.append((name, link))
             elif (node.tag == xhtmlns+'meta'):
@@ -1153,9 +1153,9 @@ class SVGSource(XMLSource):
                     if (not link):
                         errors.append(LineString("Help link missing href value.", node.sourceline))
                     elif (not (link.startswith('http://') or link.startswith('https://'))):
-                        errors.append(LineString("Help link " + link + " must be absolute URL.", node.sourceline))
+                        errors.append(LineString("Help link " + link.encode('utf-8') + " must be absolute URL.", node.sourceline))
                     elif (link in links):
-                        errors.append(LineString("Duplicate help link " + link + ".", node.sourceline))
+                        errors.append(LineString("Duplicate help link " + link.encode('utf-8') + ".", node.sourceline))
                     else:
                         links.append(LineString(link, node.sourceline))
                 # == references
@@ -1166,7 +1166,7 @@ class SVGSource(XMLSource):
                     else:
                         refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
                         if (refName in self.refs):
-                            errors.append(LineString("Reference " + refName + " already specified.", node.sourceline))
+                            errors.append(LineString("Reference " + refName.encode('utf-8') + " already specified.", node.sourceline))
                         else:
                             self.refs[refName] = ('==', refPath, node, None)
                 # != references
@@ -1177,7 +1177,7 @@ class SVGSource(XMLSource):
                     else:
                         refName = self.sourceTree.getAssetName(join(self.sourcepath, refPath))
                         if (refName in self.refs):
-                            errors.append(LineString("Reference " + refName + " already specified.", node.sourceline))
+                            errors.append(LineString("Reference " + refName.encode('utf-8') + " already specified.", node.sourceline))
                         else:
                             self.refs[refName] = ('!=', refPath, node, None)
                 else: # may have both author and reviewer in the same link
@@ -1190,7 +1190,7 @@ class SVGSource(XMLSource):
                         else:
                             link = node.get('href').strip() if node.get('href') else None
                             if (not link):
-                                errors.append(LineString("Author link for \"" + name + "\" missing contact URL (http or mailto).", node.sourceline))
+                                errors.append(LineString("Author link for \"" + name.encode('utf-8') + "\" missing contact URL (http or mailto).", node.sourceline))
                             else:
                                 credits.append((name, link))
                     # reviewers
@@ -1202,7 +1202,7 @@ class SVGSource(XMLSource):
                         else:
                             link = node.get('href').strip() if node.get('href') else None
                             if (not link):
-                                errors.append(LineString("Reviewer link for \"" + name + "\" missing contact URL (http or mailto).", node.sourceline))
+                                errors.append(LineString("Reviewer link for \"" + name.encode('utf-8') + "\" missing contact URL (http or mailto).", node.sourceline))
                             else:
                                 reviewers.append((name, link))
             elif (node.tag == svgns+'metadata'):
