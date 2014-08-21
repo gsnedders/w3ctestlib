@@ -200,13 +200,13 @@ class SourceSet:
   """
   def __init__(self, sourceCache):
     self.sourceCache = sourceCache
-    self.pathMap = {} # relpath -> source
+    self.pathMap = {} # name -> source
 
   def __len__(self):
     return len(self.pathMap)
     
   def __contains__(self, source):
-    return source.relpath in self.pathMap # XXX use source.name()
+    return source.name() in self.pathMap
 
 
   def iter(self):
@@ -219,16 +219,16 @@ class SourceSet:
        a FileSource with the same path relpath but different contents.
        (ConfigSources are exempt from this requirement.)
     """
-    cachedSource = self.pathMap.get(source.relpath) # XXX use source.name() 
+    cachedSource = self.pathMap.get(source.name())
     if not cachedSource:
-      self.pathMap[source.relpath] = source
+      self.pathMap[source.name()] = source
     else:
       if source != cachedSource:
         if isinstance(source, ConfigSource):
           cachedSource.append(source)
         else:
           ui.warn("File merge mismatch %s vs %s for %s\n" % \
-                (cachedSource.sourcepath, source.sourcepath, source.relpath))
+                (cachedSource.sourcepath, source.sourcepath, source.name()))
 
   def add(self, sourcepath, relpath, ui):
     """Generate and add FileSource from sourceCache. Return the resulting
@@ -562,7 +562,7 @@ class FileSource:
     pass
 
   def revision(self):
-    """Returns hash of the contetns of this file and any related file, references, support files, etc.
+    """Returns hash of the contents of this file and any related file, references, support files, etc.
        XXX also needs to account for .meta file
     """
     sha = hashlib.sha1()
@@ -575,6 +575,7 @@ class FileSource:
                 sha.update(refSource.data())
                 seenRefs.add(refSource.sourcepath)
                 hashReference(refSource)
+    hashReference(self)
     return sha.hexdigest()
 
   def loadMetadata(self):
@@ -599,7 +600,7 @@ class FileSource:
          - links   [list of url strings]
          - name    [string]
          - title   [string]
-         - references [list of (reftype, relpath) per reference; None if not reftest]
+         - references [list of ReferenceData per reference; None if not reftest]
          - revision   [revision id of last commit]
          - selftest [bool]
        Strings are given in ascii unless asUnicode==True.
