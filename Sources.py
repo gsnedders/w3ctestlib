@@ -737,6 +737,9 @@ class ConfigSource(FileSource):
   def name(self):
     return '.htaccess'
     
+  def type(self):
+    return intern('support')
+
   def data(self):
     """Merge contents of all config files represented by this source."""
     data = ''
