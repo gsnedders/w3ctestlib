@@ -195,18 +195,21 @@ class SourceCache:
     return source
 
 class SourceSet:
-  """Set of FileSource objects. No two FileSources in the set may
-     have the same relpath (except .htaccess files, which are merged).
+  """Set of FileSource objects. No two FileSources of the same type in the set may
+     have the same name (except .htaccess files, which are merged).
   """
   def __init__(self, sourceCache):
     self.sourceCache = sourceCache
-    self.pathMap = {} # name -> source
+    self.pathMap = {} # type/name -> source
 
   def __len__(self):
     return len(self.pathMap)
     
+  def _keyOf(self, source):
+    return source.type() + '/' + source.name()
+    
   def __contains__(self, source):
-    return source.name() in self.pathMap
+    return self._keyOf(source) in self.pathMap
 
 
   def iter(self):
@@ -219,9 +222,9 @@ class SourceSet:
        a FileSource with the same path relpath but different contents.
        (ConfigSources are exempt from this requirement.)
     """
-    cachedSource = self.pathMap.get(source.name())
+    cachedSource = self.pathMap.get(self._keyOf(source))
     if not cachedSource:
-      self.pathMap[source.name()] = source
+      self.pathMap[self._keyOf(source)] = source
     else:
       if source != cachedSource:
         if isinstance(source, ConfigSource):
