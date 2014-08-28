@@ -504,6 +504,9 @@ class FileSource:
   def name(self):
     return self.sourceTree.getAssetName(self.sourcepath)
 
+  def type(self):
+    return self.sourceTree.getAssetType(self.sourcepath)
+
   def relativeURL(self, other):
     return relativeURL(self.relpath, other.relpath)
     
