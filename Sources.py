@@ -620,30 +620,70 @@ class FileSource:
     def escape(str, andIntern = True):
       return str.encode('utf-8') if asUnicode else intern(escapeToNamedASCII(str)) if andIntern else escapeToNamedASCII(str)
 
-    references = None
-    usedRefs = {}
-    usedRefs[self.sourcepath] = '=='
-    def listReferences(source):
-      for refType, refRelPath, refNode, refSource in source.refs.values():
-        if (refSource):
-          refSourcePath = refSource.sourcepath
-        else:
-          refSourcePath = os.path.normpath(join(basepath(source.sourcepath), refRelPath))
-        if (refSourcePath not in usedRefs):
-          usedRefs[refSourcePath] = refType
-          if (refSource):
-            references.append(ReferenceData(name = self.sourceTree.getAssetName(refSourcePath), type = refType,
-                                            relpath = refRelPath, repopath = refSourcePath))
-            if ('==' == refType): # XXX don't follow != refs for now (until we export proper ref trees)
-              listReferences(refSource)
-          else:
-            references.append(ReferenceData(name = self.sourceTree.getAssetName(refSourcePath), type = refType,
-                                            relpath = relativeURL(self.sourcepath, refSourcePath),
-                                            repopath = refSourcePath))
+    def listReferences(source, seen):
+        refGroups = []
+        for refType, refRelPath, refNode, refSource in source.refs.values():
+            if ('==' == refType):
+                if (refSource):
+                    refSourcePath = refSource.sourcepath
+                else:
+                    refSourcePath = os.path.normpath(join(basepath(source.sourcepath), refRelPath))
+                if (refSourcePath in seen):
+                    continue
+                if (refSource):
+                    sourceData = ReferenceData(name = self.sourceTree.getAssetName(refSourcePath), type = refType,
+                                               relpath = refRelPath, repopath = refSourcePath)
+                    if (refSource.refs):
+                        seenRefs = seen.copy()
+                        seenRefs.add(refSourcePath)
+                        subRefLists = listReferences(refSource, seenRefs)
+                        if (subRefLists):
+                            for subRefList in subRefLists:
+                                refGroups.append([sourceData] + subRefList)
+                        else:
+                            refGroups.append([sourceData])
+                    else:
+                        refGroups.append([sourceData])
+                else:
+                    sourceData = ReferenceData(name = self.sourceTree.getAssetName(refSourcePath), type = refType,
+                                               relpath = relativeURL(self.sourcepath, refSourcePath),
+                                               repopath = refSourcePath)
+                    refGroups.append([sourceData])
+        notRefs = {}
+        for refType, refRelPath, refNode, refSource in source.refs.values():
+            if ('!=' == refType):
+                if (refSource):
+                    refSourcePath = refSource.sourcepath
+                else:
+                    refSourcePath = os.path.normpath(join(basepath(source.sourcepath), refRelPath))
+                if (refSourcePath in seen):
+                    continue
+                if (refSource):
+                    sourceData = ReferenceData(name = self.sourceTree.getAssetName(refSourcePath), type = refType,
+                                               relpath = refRelPath, repopath = refSourcePath)
+                    notRefs[sourceData.name] = sourceData
+                    if (refSource.refs):
+                        seenRefs = seen.copy()
+                        seenRefs.add(refSourcePath)
+                        for subRefList in listReferences(refSource, seenRefs):
+                            for subRefData in subRefList:
+                                notRefs[subRefData.name] = subRefData
+                else:
+                    sourceData = ReferenceData(name = self.sourceTree.getAssetName(refSourcePath), type = refType,
+                                               relpath = relativeURL(self.sourcepath, refSourcePath),
+                                               repopath = refSourcePath)
+                    notRefs[sourceData.name] = sourceData
+        if (notRefs):
+            for refData in notRefs.values():
+                refData.type = '!='
+            if (refGroups):
+                for refGroup in refGroups:
+                    refGroup += notRefs.values()
+            else:
+                refGroups.append(notRefs.values())
+        return refGroups
   
-    if (self.refs):
-      references = []
-      listReferences(self)
+    references = listReferences(self, set([self.sourcepath])) if (self.refs) else None
 
     if (self.metadata):
       data = Metadata(

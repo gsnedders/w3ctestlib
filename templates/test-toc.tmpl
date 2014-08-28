@@ -42,6 +42,7 @@
 [% END %]
   <table width="100%">
     <col id="test-column">[% IF isXML %]</col>[% END %]
+    <col id="refs-column">[% IF isXML %]</col>[% END %]
     <col id="flags-column">[% IF isXML %]</col>[% END %]
     <col id="info-column">[% IF isXML %]</col>[% END %]
     <thead>
@@ -73,7 +74,7 @@
         <td>[% '<strong>' IF primary %]
             <a href="[% extmap.translate(entry.file) %]">[% entry.name%]</a>
             [% '</strong>' IF primary %]</td>
-        <td>[% FOREACH ref IN entry.references %]<a href="[% extmap.translate(ref.relpath) %]">[% refCompMap.${ref.type} %]</a> [%+ END %]</td>
+        <td>[% FOREACH refList IN entry.references %][% FOREACH ref IN refList %]<a href="[% extmap.translate(ref.relpath) %]">[% refCompMap.${ref.type} %]</a> [%+ END %][%+ END %]</td>
         <td>[% FOREACH flag IN entry.flags %][% IF flag != 'nonHTML' and flag != 'HTMLonly' %]<abbr class="[% flag %]" title="[% flagInfo.$flag.title %]">[% flagInfo.$flag.abbr %]</abbr>[% END %][% END %]</td>
         <td>[% entry.title | collapse | html %]
       [% IF entry.asserts.size > 0 %]
