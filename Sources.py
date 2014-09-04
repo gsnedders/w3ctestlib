@@ -630,13 +630,12 @@ class FileSource:
                     refSourcePath = os.path.normpath(join(basepath(source.sourcepath), refRelPath))
                 if (refSourcePath in seen):
                     continue
+                seen.add(refSourcePath)
                 if (refSource):
                     sourceData = ReferenceData(name = self.sourceTree.getAssetName(refSourcePath), type = refType,
                                                relpath = refRelPath, repopath = refSourcePath)
                     if (refSource.refs):
-                        seenRefs = seen.copy()
-                        seenRefs.add(refSourcePath)
-                        subRefLists = listReferences(refSource, seenRefs)
+                        subRefLists = listReferences(refSource, seen.copy())
                         if (subRefLists):
                             for subRefList in subRefLists:
                                 refGroups.append([sourceData] + subRefList)
@@ -658,14 +657,13 @@ class FileSource:
                     refSourcePath = os.path.normpath(join(basepath(source.sourcepath), refRelPath))
                 if (refSourcePath in seen):
                     continue
+                seen.add(refSourcePath)
                 if (refSource):
                     sourceData = ReferenceData(name = self.sourceTree.getAssetName(refSourcePath), type = refType,
                                                relpath = refRelPath, repopath = refSourcePath)
                     notRefs[sourceData.name] = sourceData
                     if (refSource.refs):
-                        seenRefs = seen.copy()
-                        seenRefs.add(refSourcePath)
-                        for subRefList in listReferences(refSource, seenRefs):
+                        for subRefList in listReferences(refSource, seen):
                             for subRefData in subRefList:
                                 notRefs[subRefData.name] = subRefData
                 else:
@@ -678,7 +676,12 @@ class FileSource:
                 refData.type = '!='
             if (refGroups):
                 for refGroup in refGroups:
-                    refGroup += notRefs.values()
+                    for notRef in notRefs.values():
+                        for ref in refGroup:
+                            if (ref.name == notRef.name):
+                                break
+                        else:
+                            refGroup.append(notRef)
             else:
                 refGroups.append(notRefs.values())
         return refGroups
