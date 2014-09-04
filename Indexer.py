@@ -103,6 +103,8 @@ class Indexer:
         data = dict(data)
         data['file'] = '/'.join((group.name, test.relpath)) \
                        if group.name else test.relpath
+        if (data['scripttest']):
+            data['flags'].append(intern('script'))
         self.alltests.append(data)
         for uri in data['links']:
           uri = uri.replace(self.suite.draftroot, self.suite.specroot)

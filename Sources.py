@@ -355,10 +355,10 @@ class NamedDict(object):
 
 
 class Metadata(NamedDict):
-    __slots__ = ('name', 'title', 'asserts', 'credits', 'reviewers', 'flags', 'links', 'references', 'revision', 'selftest')
+    __slots__ = ('name', 'title', 'asserts', 'credits', 'reviewers', 'flags', 'links', 'references', 'revision', 'selftest', 'scripttest')
 
     def __init__(self, name = None, title = None, asserts = [], credits = [], reviewers = [], flags = [], links = [],
-                 references = [], revision = None, selftest = True):
+                 references = [], revision = None, selftest = True, scripttest = False):
         self.name = name
         self.title = title
         self.asserts = asserts
@@ -369,6 +369,7 @@ class Metadata(NamedDict):
         self.references = references
         self.revision = revision
         self.selftest = selftest
+        self.scripttest = scripttest
 
     def __getitem__(self, key):
         if ('name' == key):
@@ -391,6 +392,8 @@ class Metadata(NamedDict):
             return self.revision
         if ('selftest' == key):
             return self.selftest
+        if ('scripttest' == key):
+            return self.scripttest
         return None
     
     def __setitem__(self, key, value):
@@ -414,6 +417,8 @@ class Metadata(NamedDict):
             self.revision = value
         elif ('selftest' == key):
             self.selftest = value
+        elif ('scripttest' == key):
+            self.scripttest = value
         else:
             raise KeyError()
 
@@ -486,6 +491,7 @@ class FileSource:
     self.errors     = None
     self.encoding   = 'utf-8'
     self.refs       = {}
+    self.scripts    = []
     self.metadata   = None
     self.metaSource = None
 
@@ -609,6 +615,7 @@ class FileSource:
          - references [list of ReferenceData per reference; None if not reftest]
          - revision   [revision id of last commit]
          - selftest [bool]
+         - scripttest [bool]
        Strings are given in ascii unless asUnicode==True.
     """
     
@@ -699,7 +706,8 @@ class FileSource:
               links      = [encode(link) for link in self.metadata['links']],
               references = references,
               revision   = self.revision(),
-              selftest   = self.isSelftest()
+              selftest   = self.isSelftest(),
+              scripttest = self.isScripttest()
              )
       return data
     return None
@@ -742,7 +750,10 @@ class FileSource:
 
   def isSelftest(self):
     return self.isTest() and (not bool(self.refs))
-        
+
+  def isScripttest(self):
+    return self.isTest() and ('/resources/testharness.js' in self.scripts)
+  
   def hasFlag(self, flag):
     data = self.getMetadata()
     if data:
@@ -1109,6 +1120,11 @@ class XMLSource(FileSource):
                 if (match):
                     title = match.group(1)
                 title = title.strip()
+            # script
+            elif (node.tag == xhtmlns+'script'):
+                src = node.get('src').strip() if node.get('src') else None
+                if (src):
+                    self.scripts.append(src)
 
     if (asserts or credits or reviewers or flags or links or title):
         self.metadata = {'asserts'   : asserts,
@@ -1285,6 +1301,11 @@ class SVGSource(XMLSource):
                 if (match):
                     title = match.group(1)
                 self.metadata['title'] = title.strip()
+            # script tag (XXX restricted to metadata container?)
+            elif (node.tag == svgns+'script'):
+                src = node.get('src').strip() if node.get('src') else None
+                if (src):
+                    self.scripts.append(src)
 
     if (asserts or credits or reviewers or flags or links or title):
         self.metadata = {'asserts'   : asserts,
