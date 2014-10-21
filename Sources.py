@@ -1300,7 +1300,7 @@ class SVGSource(XMLSource):
                 match = re.match('(?:[^:]*)[tT]est(?:[^:]*):(.*)', title, re.DOTALL)
                 if (match):
                     title = match.group(1)
-                self.metadata['title'] = title.strip()
+                title = title.strip()
             # script tag (XXX restricted to metadata container?)
             elif (node.tag == svgns+'script'):
                 src = node.get('src').strip() if node.get('src') else None
