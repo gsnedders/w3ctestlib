@@ -31,7 +31,7 @@ class Section:
   def chapterNum(self):
     return self.numstr.partition('.')[0]
   def natsortkey(self):
-    chunks = self.numstr.split('.')
+    chunks = self.numstr.partition('.#')[0].split('.')
     for index in range(len(chunks)):
       if chunks[index].isdigit():
         # wrap in tuple with '0' to explicitly specify numbers come first
@@ -213,8 +213,6 @@ class Indexer:
           chap.testcount = 0
           chap.testnames = set()
           chapters.append(chap)
-          if not chap.tests:
-            continue;
         chap.testnames.update([test['name'] for test in section.tests])
         chap.testcount = len(chap.testnames)
         chap.sections.append(section)
