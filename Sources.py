@@ -518,7 +518,7 @@ class FileSource:
     
   def data(self):
     """Return file contents as a byte string."""
-    if (not self._data):
+    if (self._data is None):
       self._data = open(self.sourcepath, 'r').read()
     if (self._data.startswith(codecs.BOM_UTF8)):
       self.encoding = 'utf-8-sig' # XXX look for other unicode BOMs
