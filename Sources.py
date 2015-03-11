@@ -491,7 +491,7 @@ class FileSource:
     self.errors     = None
     self.encoding   = 'utf-8'
     self.refs       = {}
-    self.scripts    = []
+    self.scripts    = {}
     self.metadata   = None
     self.metaSource = None
 
@@ -560,6 +560,16 @@ class FileSource:
           newRefs[refName] = (refType, refPath, refNode, refSource) # update path in metadata
         source.refs = newRefs
       adjustReferences(self)
+
+    if (self.scripts):   # force testharness.js scripts to absolute path
+      for src in self.scripts:
+        if (src.endswith('/resources/testharness.js')):   # accept relative paths to testharness.js
+            scriptNode = self.scripts[src]
+            scriptNode.set('src', '/resources/testharness.js')
+        elif (src.endswith('/resources/testharnessreport.js')):
+            scriptNode = self.scripts[src]
+            scriptNode.set('src', '/resources/testharnessreport.js')
+
     
   def write(self, format):
     """Writes FileSource.data() out to `self.relpath` through Format `format`."""
@@ -752,8 +762,12 @@ class FileSource:
     return self.isTest() and (not bool(self.refs))
 
   def isScripttest(self):
-    return self.isTest() and ('/resources/testharness.js' in self.scripts)
-  
+    if (self.isTest() and self.scripts):
+        for src in self.scripts:
+            if (src.endswith('/resources/testharness.js')):   # accept relative paths to testharness.js
+                return True
+    return False
+
   def hasFlag(self, flag):
     data = self.getMetadata()
     if data:
@@ -1124,7 +1138,7 @@ class XMLSource(FileSource):
             elif (node.tag == xhtmlns+'script'):
                 src = node.get('src').strip() if node.get('src') else None
                 if (src):
-                    self.scripts.append(src)
+                    self.scripts[src] = node
 
     if (asserts or credits or reviewers or flags or links or title):
         self.metadata = {'asserts'   : asserts,
@@ -1305,7 +1319,7 @@ class SVGSource(XMLSource):
             elif (node.tag == svgns+'script'):
                 src = node.get('src').strip() if node.get('src') else None
                 if (src):
-                    self.scripts.append(src)
+                    self.scripts[src] = node
 
     if (asserts or credits or reviewers or flags or links or title):
         self.metadata = {'asserts'   : asserts,
