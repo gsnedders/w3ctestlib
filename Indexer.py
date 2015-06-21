@@ -147,6 +147,12 @@ class Indexer:
     data['addtests']     = addTests
     data['suites']       = self.suites
     data['flagInfo']     = self.flags
+    data['formatInfo']   = { 'html4': { 'report': True, 'path': 'html4', 'ext': 'htm', 'filter': 'nonHTML'},
+                             'html5': { 'report': True, 'path': 'html', 'ext': 'htm', 'filter': 'nonHTML' },
+                             'xhtml1': { 'report': True, 'path': 'xhtml1', 'ext': 'xht', 'filter': 'HTMLonly' },
+                             'xhtml1print': { 'report': False, 'path': 'xhtml1print', 'ext': 'xht', 'filter': 'HTMLonly' },
+                             'svg': { 'report': True, 'path': 'svg', 'ext': 'svg', 'filter': 'HTMLonly' }
+                           }
 
     # Copy simple copy files
     for tmplDir in reversed(self.templatePath):
