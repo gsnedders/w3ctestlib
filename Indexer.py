@@ -84,9 +84,10 @@ class Indexer:
     self.sections = {}
     for uri, numstr, title in sections:
       uri = intern(uri.encode('ascii'))
+      uriKey = intern(self._normalizeScheme(uri))
       numstr = escapeToNamedASCII(numstr)
       title = escapeToNamedASCII(title) if title else None
-      self.sections[uri] = Section(uri, title, numstr)
+      self.sections[uriKey] = Section(uri, title, numstr)
     
     self.suites = suites
     self.flags = flags
@@ -95,6 +96,11 @@ class Indexer:
     self.errors = {}
     self.contributors = {}
     self.alltests = []
+
+  def _normalizeScheme(self, uri):
+    if (uri and uri.startswith('http:')):
+      return 'https:' + uri[5:]
+    return uri
 
   def indexGroup(self, group):
     for test in group.iterTests():
@@ -107,7 +113,8 @@ class Indexer:
             data['flags'].append(intern('script'))
         self.alltests.append(data)
         for uri in data['links']:
-          uri = uri.replace(self.suite.draftroot, self.suite.specroot)
+          uri = self._normalizeScheme(uri)
+          uri = uri.replace(self._normalizeScheme(self.suite.draftroot), self._normalizeScheme(self.suite.specroot))
           if self.sections.has_key(uri):
             testlist = self.sections[uri].tests.append(data)
         for credit in data['credits']:
